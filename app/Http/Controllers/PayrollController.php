@@ -15,13 +15,49 @@ class PayrollController extends Controller
 {
     public function index(Request $request)
     {
-        $period = $request->query('period', now()->format('Y-m'));
-        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string)$period)) $period = now()->format('Y-m');
-        $search = trim((string) $request->query('search'));
-        $payrolls = Payroll::with('employee')->where('period', $period)
-            ->when($search, fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('name','like','%'.$search.'%')->orWhere('employee_code','like','%'.$search.'%')))
+        $period = (string) $request->query('period', now()->format('Y-m'));
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) $period = now()->format('Y-m');
+
+        $search = trim((string) $request->query('search', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $status = (string) $request->query('status', '');
+        if (!in_array($status, ['', 'draft', 'approved'], true)) $status = '';
+
+        // Unit diambil otomatis dari data karyawan (termasuk karyawan yang diarsipkan),
+        // sehingga cabang lama tetap bisa digunakan untuk mencari riwayat slip.
+        $branches = Employee::withTrashed()
+            ->whereNotNull('branch')->where('branch', '<>', '')
+            ->distinct()->orderBy('branch')->pluck('branch');
+
+        $query = Payroll::query()->where('period', $period)
+            ->when($search !== '', fn ($q) => $q->whereHas('employee', fn ($e) =>
+                $e->where(function ($nameQuery) use ($search) {
+                    $nameQuery->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('employee_code', 'like', '%'.$search.'%');
+                })
+            ))
+            ->when($branch !== '', fn ($q) => $q->whereHas('employee', fn ($e) =>
+                $e->where('branch', $branch)
+            ))
+            ->when($status !== '', fn ($q) => $q->where('status', $status));
+
+        // Ringkasan seluruh hasil filter, bukan hanya baris pada halaman pagination.
+        $stats = (clone $query)->toBase()->selectRaw(
+            'COUNT(*) AS total_slips, '
+            .'COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS draft_count, '
+            .'COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS approved_count, '
+            .'COALESCE(SUM(net_total), 0) AS net_total, '
+            .'COALESCE(SUM(CASE WHEN status = ? THEN net_total ELSE 0 END), 0) AS draft_net, '
+            .'COALESCE(SUM(CASE WHEN status = ? THEN net_total ELSE 0 END), 0) AS approved_net',
+            ['draft', 'approved', 'draft', 'approved']
+        )->first();
+
+        $payrolls = (clone $query)->with('employee')
             ->latest()->paginate(20)->withQueryString();
-        return view('payrolls.index', compact('period', 'search', 'payrolls'));
+
+        return view('payrolls.index', compact(
+            'period', 'search', 'branch', 'status', 'branches', 'stats', 'payrolls'
+        ));
     }
 
     private function initialInput(Employee $employee): array
