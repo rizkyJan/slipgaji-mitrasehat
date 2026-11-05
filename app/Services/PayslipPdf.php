@@ -126,8 +126,6 @@ class PayslipPdf
         $pdf->line(48,$y,548,$y,.7);
         $date = ($payroll->approved_at ?? now())->locale('id')->translatedFormat('d F Y');
         $pdf->text(548, $y-18, 'Sukoharjo, '.$date, 9, false, 'right');
-        $pdf->text(408, $y-42, 'Petugas Payroll', 9, true);
-        $pdf->text(408, $y-87, $setting('slip_signer', 'Petugas Payroll'), 9, true);
         if ($payroll->status === 'approved') {
             $qrUrl = $verifier->publicUrl($payroll);
             $pdf->qr($qrUrl, 48, $y - 122, 87);
