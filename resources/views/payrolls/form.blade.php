@@ -114,7 +114,7 @@ async function recalc(){
     const status=document.getElementById('previewStatus');const panel=document.getElementById('previewBody');
     const params=new FormData(form);
     try{
-        const response=await fetch(@json(route('payrolls.preview')), {method:'POST',headers:{'Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content},body:params,credentials:'same-origin'});
+        const response=await fetch(@json(route('payrolls.preview', [], false)), {method:'POST',headers:{'Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content},body:params,credentials:'same-origin'});
         const result=await response.json();
         if(ticket!==calcToken)return;
         if(!response.ok){const messages=result.errors?Object.values(result.errors).flat().join(' '):result.message||'Tidak dapat menghitung.';throw new Error(messages)}
