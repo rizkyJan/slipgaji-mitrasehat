@@ -122,6 +122,39 @@ class GmailService
         return (string) $response->json('id');
     }
 
+    /** Kirim dokumen PDF generik; tidak mengubah alur sendPayslip karyawan biasa. */
+    public function sendPdfDocument(GoogleConnection $connection, string $recipient, string $subject, string $html, string $fileName, string $binary): string
+    {
+        if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Alamat email dokter tidak valid.');
+        $subject = str_replace(["\r", "\n"], ' ', $subject);
+        $fileName = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $fileName);
+        $boundary = 'doctor_'.Str::random(32);
+        $mime = implode("\r\n", [
+            'From: '.$connection->email,
+            'To: '.$recipient,
+            'Subject: =?UTF-8?B?'.base64_encode($subject).'?=',
+            'MIME-Version: 1.0',
+            'Content-Type: multipart/mixed; boundary="'.$boundary.'"',
+            '', '--'.$boundary,
+            'Content-Type: text/html; charset=UTF-8',
+            'Content-Transfer-Encoding: base64', '',
+            rtrim(chunk_split(base64_encode($html), 76, "\r\n")),
+            '--'.$boundary,
+            'Content-Type: application/pdf; name="'.$fileName.'"',
+            'Content-Disposition: attachment; filename="'.$fileName.'"',
+            'Content-Transfer-Encoding: base64', '',
+            rtrim(chunk_split(base64_encode($binary), 76, "\r\n")),
+            '--'.$boundary.'--', '',
+        ]);
+        $raw = rtrim(strtr(base64_encode($mime), '+/', '-_'), '=');
+        $response = Http::withToken($this->accessToken($connection))->timeout(40)
+            ->post('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', ['raw' => $raw]);
+        if (!$response->successful() || !$response->json('id')) {
+            throw new RuntimeException('Gmail API menolak pengiriman PDF dokter.');
+        }
+        return (string) $response->json('id');
+    }
+
     public function disconnect(GoogleConnection $connection): void
     {
         try {
