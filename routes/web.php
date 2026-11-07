@@ -43,6 +43,11 @@ Route::middleware(['auth', \App\Http\Middleware\NoStoreSensitiveContent::class])
     Route::post('/payrolls/{payroll}/approve', [PayrollController::class,'approve'])->middleware('can:approve-payroll')->name('payrolls.approve');
 
     // Modul honor dokter independen dari payroll karyawan biasa.
+    // R4.6: import rekap jadwal dokter (hanya draft, tidak auto-approve/email).
+    Route::get('/doctor-imports', [\App\Http\Controllers\DoctorExcelImportController::class, 'index'])->name('doctors.import.index');
+    Route::post('/doctor-imports', [\App\Http\Controllers\DoctorExcelImportController::class, 'upload'])->middleware('throttle:10,1')->name('doctors.import.upload');
+    Route::get('/doctor-imports/{batch}', [\App\Http\Controllers\DoctorExcelImportController::class, 'review'])->name('doctors.import.review');
+    Route::post('/doctor-imports/{batch}/generate', [\App\Http\Controllers\DoctorExcelImportController::class, 'generate'])->name('doctors.import.generate');
     Route::get('/doctor-payrolls', [DoctorPayrollController::class, 'index'])->name('doctors.index');
     Route::get('/doctor-payrolls/create', [DoctorPayrollController::class, 'create'])->name('doctors.create');
     Route::post('/doctor-payrolls/preview', [DoctorPayrollController::class, 'preview'])->name('doctors.preview');

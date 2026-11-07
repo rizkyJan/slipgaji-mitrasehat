@@ -5,6 +5,11 @@ use App\Models\DoctorProcedure;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 class DoctorPayrollCalculator {
+ // Toleransi kekurangan jam kerja sampai 60 menit: transport tetap penuh.
+ private const FULL_TRANSPORT_GRACE_MINUTES = 60;
+ private function transportIsFull(float $worked, float $standard): bool {
+  return (int)round($worked*60) + self::FULL_TRANSPORT_GRACE_MINUTES >= (int)round($standard*60);
+ }
  private function nonnegative($value):int { return max(0,(int)($value??0)); }
  private function hours(array $row, float $default):float {
   if (empty($row['start_time']) || empty($row['end_time'])) return $default;
@@ -52,11 +57,12 @@ class DoctorPayrollCalculator {
     $worked=$this->hours($entry,(isset($entry['hours_per_visit'])&&$entry['hours_per_visit']!=='')?(float)$entry['hours_per_visit']:$standard);
     if($worked>24)throw ValidationException::withMessages(["recap_transport.$ix.end_time"=>'Durasi kerja maksimal 24 jam.']);
     $hourly=$this->nonnegative($rules['hourly_override']??0);
-    $perVisit=$worked+0.00001 >= $standard?$fullRate:(int)round(min($fullRate,($hourly>0?$hourly:$fullRate/$standard)*$worked));
+    $isFull=$this->transportIsFull($worked,$standard);
+    $perVisit=$isFull?$fullRate:(int)round(min($fullRate,($hourly>0?$hourly:$fullRate/$standard)*$worked));
     $subtotal=$perVisit*$qty;
     $totTransport+=$subtotal;
     if($kind==='poli2')$poliShifts+=$qty;
-    $recapDetails['transport'][]=['type'=>$kind,'count'=>$qty,'full_rate'=>$fullRate,'standard_hours'=>$standard,'hours_per_visit'=>$worked,'start_time'=>$startTime,'end_time'=>$endTime,'per_visit'=>$perVisit,'subtotal'=>$subtotal,'mode'=>$worked+0.00001 >= $standard?'full':($hourly>0?'hourly':'prorata')];
+    $recapDetails['transport'][]=['type'=>$kind,'count'=>$qty,'full_rate'=>$fullRate,'standard_hours'=>$standard,'hours_per_visit'=>$worked,'start_time'=>$startTime,'end_time'=>$endTime,'per_visit'=>$perVisit,'subtotal'=>$subtotal,'mode'=>$isFull?'full':($hourly>0?'hourly':'prorata')];
    }
    $raw=$data['recap_counts']??[];
    $counts=[];
@@ -78,7 +84,7 @@ class DoctorPayrollCalculator {
   foreach(($data['shifts']??[]) as $ix=>$r){
    $type=$r['shift_type'];$date=$r['work_date'];
    if((empty($r['start_time'])) !== (empty($r['end_time'])))throw ValidationException::withMessages(["shifts.$ix.end_time"=>'Isi jam masuk dan selesai sekaligus, atau kosongkan keduanya untuk shift penuh.']);
-   if(substr($date,0,7)!==$period)throw ValidationException::withMessages(["shifts.$ix.work_date"=>'Tanggal jadwal harus berada dalam periode gaji.']);
+   if(!\App\Services\DoctorPayrollPeriod::includes($period,$date))throw ValidationException::withMessages(["shifts.$ix.work_date"=>'Tanggal jadwal harus berada dalam periode gaji.']);
    $rate=$this->nonnegative($rates[$type]??0);
    // Durasi penuh berbeda tiap jenis shift; override pada baris jadwal bersifat opsional.
    $profileFull=(float)($rules['shift_hours'][$type]??$rules['full_hours']??5);
@@ -87,7 +93,7 @@ class DoctorPayrollCalculator {
    if($worked>24)throw ValidationException::withMessages(["shifts.$ix.end_time"=>'Jam praktik tidak boleh lebih dari 24 jam.']);
    $hourly=$this->nonnegative($rules['hourly_override']??0);
    $hasManual=isset($r['transport_override']) && $r['transport_override']!=='' && $r['transport_override']!==null;
-   $modeTransport=$hasManual?'manual':($worked+0.00001 >= $standard?'full':($hourly>0?'hourly':'prorata'));
+   $modeTransport=$hasManual?'manual':($this->transportIsFull($worked,$standard)?'full':($hourly>0?'hourly':'prorata'));
    $transport=$hasManual?$this->nonnegative($r['transport_override']):
     ($modeTransport==='full'?$rate:(int)round(min($rate,($hourly>0?$hourly:$rate/$standard)*$worked)));
    $bpjs=$this->nonnegative($r['bpjs_count']??0); $umum=$this->nonnegative($r['general_count']??0);
@@ -125,7 +131,7 @@ class DoctorPayrollCalculator {
   $actionTotal=0;
   foreach(($data['actions']??[]) as $ix=>$a){
    $actionDate=trim((string)($a['work_date']??''));
-   if($actionDate!=='' && substr($actionDate,0,7)!==$period)throw ValidationException::withMessages(["actions.$ix.work_date"=>'Tanggal tindakan tidak sesuai periode.']);
+   if($actionDate!=='' && !\App\Services\DoctorPayrollPeriod::includes($period,$actionDate))throw ValidationException::withMessages(["actions.$ix.work_date"=>'Tanggal tindakan tidak sesuai periode.']);
    if($inputMode==='daily' && $actionDate==='')throw ValidationException::withMessages(["actions.$ix.work_date"=>'Tanggal tindakan wajib dalam mode harian.']);
    $proc=DoctorProcedure::query()->whereKey($a['procedure_id'])->where('active',true)->firstOrFail();
    if($proc->branch && strcasecmp($proc->branch,$assignment->branch)!==0)throw ValidationException::withMessages(["actions.$ix.procedure_id"=>'Tindakan tidak tersedia untuk cabang ini.']);
@@ -149,7 +155,7 @@ class DoctorPayrollCalculator {
   }
   $gross=array_sum($income);$cuts=array_sum($deductions);$net=$gross-$cuts;$cash=0;
   foreach(($data['cash']??[]) as $ix=>$row){
-   if(substr($row['date'],0,7)!==$period)throw ValidationException::withMessages(["cash.$ix.date"=>'Tanggal pengambilan cash harus dalam periode ini.']);
+   if(!\App\Services\DoctorPayrollPeriod::includes($period,$row['date']))throw ValidationException::withMessages(["cash.$ix.date"=>'Tanggal pengambilan cash harus dalam periode ini.']);
    $amount=$this->nonnegative($row['amount']);$cash+=$amount;
    $cashDetails[]=['date'=>$row['date'],'amount'=>$amount,'note'=>trim((string)($row['note']??''))];
   }

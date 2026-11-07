@@ -117,7 +117,7 @@ function recapTransport(row={}){
    ${field(key('start_time'),'Mulai (opsional)','time',row.start_time??'')}
    ${field(key('end_time'),'Selesai (opsional)','time',row.end_time??'')}
    ${field(key('hours_per_visit'),'Durasi per kedatangan (jam)','number',row.hours_per_visit??'','min="0.25" max="24" step="0.25" placeholder="Full shift"')}
-  </div><p class="dr-help">Isi jam mulai & selesai ATAU durasi; bila keduanya kosong, dianggap full shift.</p></details>
+  </div><p class="dr-help">Isi jam mulai & selesai ATAU durasi; bila kosong, dianggap full shift. Kekurangan hingga 60 menit dari standar tetap dibayar transport penuh; lebih dari 60 menit diprorata. Fee pasien tetap sesuai jumlah berfee.</p></details>
   <button type="button" data-delete-recap="1" class="btn btn-outline btn-sm" style="justify-self:start">Hapus baris</button>
  </div>`;
  const div=document.getElementById('dr-recap-transport');div.insertAdjacentHTML('beforeend',html);
@@ -140,7 +140,8 @@ function updateRecapTotals(){
   const custom=item.querySelector('[name$="[hours_per_visit]"]').value;
   const worked=timeHours(st,en)??(custom?Number(custom):std);
   const full=Number(shiftRates[t]||0);
-  const per=worked>=std?full:Math.round(Math.min(full,(hourlyOverride>0?hourlyOverride:full/std)*worked));
+  const fullTransport=Math.round(worked*60)+60>=Math.round(std*60);
+  const per=fullTransport?full:Math.round(Math.min(full,(hourlyOverride>0?hourlyOverride:full/std)*worked));
   item.querySelector('[data-full-rate]').textContent=`Tarif full ${money(full)} / ${std} jam`;
   item.querySelector('[data-formula]').textContent=`${qty} × ${money(per)}`;
   item.querySelector('[data-subtotal]').textContent=money(Math.max(0,qty)*Math.max(0,per));
@@ -265,7 +266,7 @@ root.addEventListener('input',()=>{clearTimeout(tid);tid=setTimeout(preview,380)
 const error=document.getElementById('dr-error');const warning=document.getElementById('dr-warning');
 async function preview(){
  const ticket=++previewSeq;try{
- const formData=new FormData(root);const response=await fetch(@json(route('doctors.preview', [], false)),{method:'POST',body:formData,credentials:'same-origin',headers:{'Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content}});
+ const formData=new FormData(root);formData.delete('_method');const response=await fetch(@json(route('doctors.preview', [], false)),{method:'POST',body:formData,credentials:'same-origin',headers:{'Accept':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content}});
  const data=await response.json();if(ticket!==previewSeq)return;if(!response.ok){let errs=Object.values(data.errors||{}).flat();throw new Error(errs[0]||data.message||'Periksa kembali isian.');}
  error.style.display='none';lastPreview=data;
  for(const [key,id]of Object.entries({gross_total:'dr-gross',deduction_total:'dr-cut',net_total:'dr-net',cash_total:'dr-cash',transfer_due:'dr-transfer'}))document.getElementById(id).textContent=money(data[key]);

@@ -2,6 +2,7 @@
 @section('title','Penggajian Dokter')
 @section('content')
 <div class="page-head"><div><p class="eyebrow">MODUL KHUSUS DOKTER</p><h1 class="page-title">Honor & Slip Dokter</h1><p class="page-sub">Perhitungan per dokter, cabang, jadwal, pasien, tindakan, dan cash.</p></div><a href="{{ route('doctors.create',['period'=>$period]) }}" class="btn btn-primary">+ Buat Honor Dokter</a></div>
+<div style="margin:0 0 14px"><a class="btn btn-primary" href="{{ route('doctors.import.index') }}">⇪ Upload Excel & Analisis Otomatis</a></div>
 <div class="card"><div class="card-pad"><form method="get" style="display:flex;flex-wrap:wrap;gap:14px;align-items:end">
 <div class="field"><label>Periode</label><input class="input" type="month" name="period" value="{{ $period }}"></div>
 <div class="field"><label>Unit / Cabang</label><select class="input" name="branch"><option value="">Semua Unit</option>@foreach($branches as $b)<option @selected($branch===$b) value="{{ $b }}">{{ $b }}</option>@endforeach</select></div>
