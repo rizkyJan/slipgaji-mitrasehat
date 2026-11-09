@@ -144,244 +144,157 @@ class DoctorPayslipPdf {
    $pdf->text(145,$qrY+40,'pembayaran cash, dan transfer.',8);
   }else{$pdf->text(48,$y-52,'DRAFT - BELUM DISETUJUI',10,true);}
   $pdf->rgb(.48,.50,.54);$pdf->text(48,38,'Dokumen rahasia. Diterbitkan sistem Mitra Sehat Payroll.',7.5);
-  // Lampiran rinci: menggunakan snapshot gaji, tanpa menghitung ulang aturan yang mungkin berubah.
-  $money=static fn($v):string=>'Rp '.number_format((int)round((float)($v??0)),0,',','.');
-  // Shift, tindakan, dan rules telah dibaca dari snapshot di atas.
-  $cashRows=$s['cash']??[];
-  $pdf->newPage();$y=792;
-  $drawPageHeader=function()use($pdf,$p,$d,$period,&$y){
-   $pdf->rgb(.07,.24,.55);$pdf->text(48,791,'LAMPIRAN RINCIAN HONOR DOKTER',12.5,true);
-   $pdf->rgb(.35,.41,.5);$pdf->text(48,772,($d['name']??'-').' | '.$period,9);
-   $pdf->text(548,772,$p->slip_number??'DRAFT - BELUM SAH',8,false,'right');
-   $pdf->rgb(.7,.76,.85);$pdf->line(48,761,548,761,.65);$y=741;
+  // Lampiran ringkas R4.13: hanya tata letak, semua nominal dari snapshot.
+  // Halaman utama di atas tidak diubah.
+  $moneyShort=static fn($value):string=>number_format((int)round((float)($value??0)),0,',','.');
+  $numShort=static fn($value):string=>rtrim(rtrim(number_format((float)($value??0),2,',','.'),'0'),',');
+  $labels=config('doctor_payroll.shift_labels',[]);
+  $groups=[];
+  $add=function(string $section,string $label,int $count,string $rate,int $amount)use(&$groups){
+   if(!isset($groups[$section]))$groups[$section]=[];
+   $groups[$section][]=['label'=>$label,'count'=>$count,'rate'=>$rate,'amount'=>$amount];
   };
-  $drawPageHeader();
-  $checkSpace=function(int $need=20)use($pdf,&$y,$drawPageHeader){
-   if($y-$need<58){$pdf->newPage();$drawPageHeader();}
-  };
-  $sectionCount=0;
-  $heading=function(string $title)use($pdf,&$y,$checkSpace,&$sectionCount){
-   $sectionCount++;
-   $checkSpace(48);$pdf->rgb(.89,.94,1);$pdf->rectangle(48,$y-7,500,22,true);
-   $pdf->rgb(.07,.25,.61);$pdf->text(55,$y+1,chr(64+$sectionCount).'. '.$title,9.4,true);$y-=31;
-  };
-  $row=function(string $left,string $right='',bool $strong=false)use($pdf,&$y,$checkSpace){
-   $checkSpace(19);$pdf->rgb($strong?.08:.23,$strong?.27:.26,$strong?.64:.31);
-   // Sisakan kolom kanan untuk jumlah uang, mencegah angka bertabrakan dengan uraian.
-   $max=$right!==''?65:98;
-   $left=trim($left);
-   if(strlen($left)>$max)$left=substr($left,0,$max-3).'...';
-   $pdf->text(55,$y,$left,$strong?8.7:8.1,$strong);
-   if($right!=='')$pdf->text(541,$y,$right,$strong?8.7:8.1,$strong,'right');
-   $y-=18;
-  };
-  $note=function(string $text)use($pdf,&$y,$checkSpace){
-   foreach(explode("\n",wordwrap($text,97,"\n",true)) as $part){
-    $checkSpace(16);$pdf->rgb(.37,.41,.49);$pdf->text(55,$y,$part,7.8);$y-=15;
-   }
-  };
-  $date=static fn($raw):string=>(is_string($raw)&&strtotime($raw))?date('d/m/Y',strtotime($raw)):(string)($raw??'-');
-  $num=static fn($value):string=>rtrim(rtrim(number_format((float)($value??0),2,',','.'),'0'),',');
-  $subTotal=function(string $name,int $amount)use($pdf,&$y,$checkSpace,$row,$money){
-   $checkSpace(30);$pdf->rgb(.72,.77,.86);$pdf->line(310,$y+7,541,$y+7,.45);
-   $row($name,$money($amount),true);$y-=9;
-  };
-
-  // R4.5: rekap bulanan tidak punya tanggal per kedatangan.
-  // Cetak jumlah x tarif dari snapshot, bukan mengarang tanggal praktik.
+  // Transport: kelompokkan jenis shift/tarif agar dokter tidak perlu membaca per tanggal.
+  $transportGrouped=[];
   if($recapMode){
-   if($recapTransport){
-    $heading('REKAP TRANSPORT / KEHADIRAN');
-    foreach($recapTransport as $i=>$tr){
-     $type=(string)($tr['type']??'-');
-     $label=(string)(config('doctor_payroll.shift_labels')[$type]??$type);
-     $count=(int)($tr['count']??0);$per=(int)($tr['per_visit']??0);
-     $row(($i+1).'. '.$label.' | '.$count.' x '.$money($per),$money($tr['subtotal']??0),true);
-     if(($tr['mode']??'full')!=='full'){
-      $work=$num($tr['hours_per_visit']??0);$std=$num($tr['standard_hours']??0);
-      $times=(!empty($tr['start_time']) && !empty($tr['end_time']))?(' | jam '.$tr['start_time'].'-'.$tr['end_time']):'';
-      $note('    Tarif full '.$money($tr['full_rate']??0).' / '.$std.' jam, kerja '.$work.' jam'.$times.' = '.$money($per).' per kedatangan.');
-     }
-    }
-    $subTotal('TOTAL TRANSPORT',(int)($s['income']['Uang Transport']??0));
+   foreach($recapTransport as $tr){
+    $qty=(int)($tr['count']??0);if($qty<=0)continue;
+    $type=(string)($tr['type']??'-');
+    $label=(string)($labels[$type]??$type);
+    $per=(int)($tr['per_visit']??0);
+    if(($tr['mode']??'full')!=='full')$label.=' ('.$numShort($tr['hours_per_visit']??0).' jam)';
+    $key=$label.'|'.$per;
+    if(!isset($transportGrouped[$key]))$transportGrouped[$key]=['label'=>$label,'count'=>0,'per'=>$per,'amount'=>0];
+    $transportGrouped[$key]['count']+=$qty;
+    $transportGrouped[$key]['amount']+=(int)($tr['subtotal']??0);
    }
-   $patientMode=$rules['patient_mode']??'all';
-   $poliQuota=(int)($recap['poli2_quota']??20);
-   foreach([
-    ['RINCIAN FEE PASIEN BPJS','Uang Pasien BPJS','bpjs_regular','poli2_bpjs_paid','bpjs_fee'],
-    ['RINCIAN FEE PASIEN UMUM','Uang Pasien Umum','umum_regular','poli2_umum_paid','general_fee'],
-   ] as [$titleText,$incomeKey,$regularKey,$poliKey,$rateKey]){
-    $rate=(int)($rules[$rateKey]??0);$regular=(int)($recapCounts[$regularKey]??0);$poli=(int)($recapCounts[$poliKey]??0);
-    if(($patientZero && $rate>0)||$regular>0||$poli>0){
-     $heading($titleText);
-     if($patientMode==='none')$note('Profil ini tidak memberikan fee pasien. Jumlah tetap dicatat sebagai rekap.');
-     $row('Selain Poli 2: '.$regular.' pasien berfee x '.$money($rate),$money($patientMode==='none'?0:$regular*$rate));
-     $row('Poli 2: '.$poli.' pasien setelah kuota x '.$money($rate),$money($patientMode==='none'?0:$poli*$rate));
-     $note('Kuota Poli 2 '.$poliQuota.' pasien PERTAMA PER KEDATANGAN (BPJS dan umum digabung). Angka setelah kuota berasal dari rekap admin.');
-     $subTotal('TOTAL '.$incomeKey,(int)($s['income'][$incomeKey]??0));
-    }
-   }
-   $usgCount=(int)($recapCounts['usg']??0);
-   if($usgCount>0 || ($patientZero && $usgRelevant)){
-    $heading('RINCIAN PASIEN USG');$rate=(int)($rules['usg_fee']??0);
-    $row('USG '.$usgCount.' x '.$money($rate),$money($usgCount*$rate));
-    $subTotal('TOTAL FEE USG',(int)($s['income']['Uang Pasien USG']??0));
-   }
-   $hcClinic=(int)($recapCounts['homecare_clinic']??0);$hcOwn=(int)($recapCounts['homecare_own']??0);
-   if($hcClinic+$hcOwn>0 || ($patientZero && $homeRelevant)){
-    $heading('RINCIAN HOMECARE');
-    $cRate=(int)($rules['homecare_clinic']??0);$oRate=(int)($rules['homecare_own']??0);
-    $row('Kendaraan klinik: '.$hcClinic.' x '.$money($cRate),$money($hcClinic*$cRate));
-    $row('Kendaraan sendiri: '.$hcOwn.' x '.$money($oRate),$money($hcOwn*$oRate));
-    $subTotal('TOTAL FEE HOMECARE',(int)($s['income']['Fee Homecare']??0));
-   }
-   $note('Rekap ini disusun dari jumlah per bulan tanpa rincian tanggal masing-masing kedatangan. Periksa dengan catatan pelayanan bila diperlukan.');
-   $y-=12;
   }else{
-  $transportRows=array_values(array_filter($shiftRows,static fn($r)=>$shiftZero || (int)($r['transport']??0)!==0));
-  if($transportRows){
-   $heading('RINCIAN UANG TRANSPORT / KEHADIRAN');
+   foreach($shiftRows as $shift){
+    $type=(string)($shift['type']??'-');
+    $label=(string)($labels[$type]??$type);
+    $std=(float)($shift['standard_hours']??0);$worked=(float)($shift['hours']??0);
+    if($std>0 && $worked+0.00001<$std && ($shift['transport_mode']??'')!=='full'){
+     $label.=' ('.$numShort($worked).' jam)';
+    }
+    if(($shift['transport_mode']??'')==='manual')$label.=' (koreksi)';
+    $per=(int)($shift['transport']??0);
+    $key=$label.'|'.$per;
+    if(!isset($transportGrouped[$key]))$transportGrouped[$key]=['label'=>$label,'count'=>0,'per'=>$per,'amount'=>0];
+    $transportGrouped[$key]['count']++;
+    $transportGrouped[$key]['amount']+=$per;
+   }
   }
-  foreach($transportRows as $i=>$shift){
-   $checkSpace(65);
-   $worked=$shift['hours']??0;$full=$shift['standard_hours']??0;
-   $rate=(int)($shift['full_rate']??0);$actual=(int)($shift['transport']??0);
-   $time=(!empty($shift['start_time'])&&!empty($shift['end_time']))?
-    ($shift['start_time'].'-'.$shift['end_time']):'Full shift';
-   $row(($i+1).'. '.$date($shift['date']??null).' | '.($shift['type']??'-').' | '.$time,$money($actual),true);
-   $mode=$shift['transport_mode']??'unknown';
-   if($mode==='manual')$note('    Tarif penuh '.$money($rate).' | koreksi transport manual | nominal '.$money($actual));
-   elseif($mode==='hourly')$note('    '.$num($worked).' jam x tarif khusus '.$money($shift['hourly_rate']??0).'/jam = '.$money($actual));
-   elseif($mode==='full')$note('    '.$num($worked).' jam (standar '.$num($full).' jam) | tarif shift penuh '.$money($rate));
-   elseif($mode==='prorata')$note('    '.$money($rate).' / '.$num($full).' jam x '.$num($worked).' jam = '.$money($actual));
-   else $note('    Durasi '.$num($worked).' jam | standar '.$num($full).' jam | tarif penuh '.$money($rate));
-  }
-  if($transportRows)$subTotal('TOTAL UANG TRANSPORT',(int)($s['income']['Uang Transport']??0));
+  foreach($transportGrouped as $tr)$add('TRANSPORT / KEHADIRAN',$tr['label'],(int)$tr['count'],$moneyShort($tr['per']),(int)$tr['amount']);
 
-  $mode=$rules['patient_mode']??'excess';
-  // Snapshot R4.4 mencatat mode per jadwal. Slip lama tetap menggunakan keterangan
-  // aturan lama agar PDF tidak salah menjelaskan hitungan yang sudah disetujui.
-  $newRule=false;
-  foreach($shiftRows as $shift){if(array_key_exists('patient_mode_applied',$shift)){$newRule=true;break;}}
-  if($newRule){
-   $included=(int)($rules['poli2_included']??20);
-   $modeText=$mode==='none'?'Profil ini tidak menerima fee pasien BPJS/umum':'Selain Poli 2: semua pasien mendapat fee sejak pasien pertama. Poli 2: '.$included.' pasien pertama termasuk transport; hanya pasien setelah kuota mendapat fee';
+  // BPJS dan umum tidak dicampur, Poli 2 dipisahkan berdasarkan pasien BERFEE.
+  $counts=['bpjs_regular'=>0,'bpjs_poli2'=>0,'umum_regular'=>0,'umum_poli2'=>0,'usg'=>0,'homecare_clinic'=>0,'homecare_own'=>0];
+  if($recapMode){
+   $counts['bpjs_regular']=(int)($recapCounts['bpjs_regular']??0);
+   $counts['bpjs_poli2']=(int)($recapCounts['poli2_bpjs_paid']??0);
+   $counts['umum_regular']=(int)($recapCounts['umum_regular']??0);
+   $counts['umum_poli2']=(int)($recapCounts['poli2_umum_paid']??0);
+   foreach(['usg','homecare_clinic','homecare_own'] as $key)$counts[$key]=(int)($recapCounts[$key]??0);
   }else{
-   $legacyIncluded=(int)($rules['included']??20);
-   $modeText=match($mode){'all'=>'Semua pasien memperoleh fee','none'=>'Tidak ada fee per pasien',default=>'Aturan slip lama: fee pasien setelah kuota '.$legacyIncluded.' pasien per shift'};
-  }
-  $bpjsRate=(int)($rules['bpjs_fee']??0);$bpjsSeen=0;$bpjsPaid=0;
-  if($bpjsRelevant && ($patientZero || $bpjsVisits>0 || (int)($s['income']['Uang Pasien BPJS']??0)>0)){
-   $heading('RINCIAN PASIEN BPJS');
-   $note('Ketentuan: '.$modeText.'. Dilayani berbeda dengan pasien berfee.');
    foreach($shiftRows as $shift){
-    $seen=(int)($shift['bpjs']??0);$paid=(int)($shift['bpjs_paid']??0);
-    $bpjsSeen+=$seen;$bpjsPaid+=$paid;
-    if(!$patientZero && !$seen && !$paid)continue;
-    $row($date($shift['date']??null).' | '.($shift['type']==='poli2'?'Poli 2':'Shift '.$shift['type']).' | dilayani '.$seen.' | berfee '.$paid.' x '.$money($bpjsRate),$money($paid*$bpjsRate));
-   }
-   $note('Total BPJS dilayani: '.$bpjsSeen.' | memperoleh fee: '.$bpjsPaid.'.');
-   $subTotal('TOTAL FEE PASIEN BPJS',(int)($s['income']['Uang Pasien BPJS']??0));
-  }
-
-  $umumRate=(int)($rules['general_fee']??0);$umumSeen=0;$umumPaid=0;
-  if($umumRelevant && ($patientZero || $umumVisits>0 || (int)($s['income']['Uang Pasien Umum']??0)>0)){
-   $heading('RINCIAN PASIEN UMUM');$note('Ketentuan: '.$modeText.'.');
-   foreach($shiftRows as $shift){
-    $seen=(int)($shift['general']??0);$paid=(int)($shift['general_paid']??0);
-    $umumSeen+=$seen;$umumPaid+=$paid;
-    if(!$patientZero && !$seen && !$paid)continue;
-    $row($date($shift['date']??null).' | '.($shift['type']==='poli2'?'Poli 2':'Shift '.$shift['type']).' | dilayani '.$seen.' | berfee '.$paid.' x '.$money($umumRate),$money($paid*$umumRate));
-   }
-   $note('Total umum dilayani: '.$umumSeen.' | memperoleh fee: '.$umumPaid.'.');
-   $subTotal('TOTAL FEE PASIEN UMUM',(int)($s['income']['Uang Pasien Umum']??0));
-  }
-
-  $usgRate=(int)($rules['usg_fee']??0);$usgN=0;
-  if($usgVisits>0 || ($patientZero && $usgRelevant)){
-   $heading('RINCIAN PASIEN USG');
-   foreach($shiftRows as $shift){
-    $n=(int)($shift['usg']??0);$usgN+=$n;
-    if(!$n)continue;
-    $row($date($shift['date']??null).' | '.$n.' USG x '.$money($usgRate),$money($shift['usg_fee']??($n*$usgRate)));
-   }
-   if(!$usgN)$note('Tidak ada pasien USG tercatat pada periode ini.');
-   $subTotal('TOTAL FEE USG',(int)($s['income']['Uang Pasien USG']??0));
-  }
-
-  if($homeVisits>0 || ($patientZero && $homeRelevant)){
-   $heading('RINCIAN HOMECARE');
-  $hcRate=(int)($rules['homecare_clinic']??0);$ownRate=(int)($rules['homecare_own']??0);$hcAny=false;
-  foreach($shiftRows as $shift){
-   $n=(int)($shift['homecare_clinic']??0);$own=(int)($shift['homecare_own']??0);
-   if($n>0){$hcAny=true;$row($date($shift['date']??null).' | Kendaraan klinik: '.$n.' x '.$money($hcRate),$money($n*$hcRate));}
-   if($own>0){$hcAny=true;$row($date($shift['date']??null).' | Kendaraan sendiri: '.$own.' x '.$money($ownRate),$money($own*$ownRate));}
-  }
-  if(!$hcAny)$note('Tidak ada homecare berfee pada periode ini.');
-  $subTotal('TOTAL FEE HOMECARE',(int)($s['income']['Fee Homecare']??0));
-  }
-
-  } // akhir bagian lampiran harian; tindakan dan cash berlaku di semua mode.
-  if($actionRows){
-   $heading('RINCIAN TINDAKAN MEDIS DAN GIGI');
-  }
-  foreach($actionRows as $i=>$action){
-   $checkSpace(60);
-   $qty=(int)($action['qty']??0);$fee=(int)($action['fee']??0);
-   $row(($i+1).'. '.($action['date']??null?$date($action['date']):'Rekap bulan').' | '.($action['label']??'Tindakan').' | '.$qty.'x',$money($fee),true);
-   $type=$action['mode']??'fixed';$pct=$num($action['percentage']??0);
-   if($type==='percentage')$note('    (Biaya '.$money($action['charge']??0).' - BHMP '.$money($action['material']??0).') x '.$pct.'% x '.$qty.' tindakan');
-   elseif($type==='prosthesis')$note('    (Klaim BPJS '.$money($action['claim']??0).' + (Pasien '.$money($action['patient_receipt']??0).' - lab/BHMP '.$money($action['material']??0).')) x '.$pct.'% x '.$qty);
-   else $note('    '.$qty.' tindakan x tarif dokter '.$money($action['unit_fee']??0));
-  }
-  if($actionRows)$subTotal('TOTAL FEE TINDAKAN',(int)($s['income']['Fee Tindakan']??0));
-
-  $extraIncomes=array_values(array_filter(($s['extras']??[]),static fn($e)=>($e['type']??'')==='income' && ($optionalZero || (int)($e['amount']??0)>0)));
-  $fixedIncomes=[];
-  foreach(['Gaji Pokok','Fee SIP','Fee PJ'] as $key){
-   if($optionalZero || (int)($s['income'][$key]??0)>0)$fixedIncomes[$key]=(int)($s['income'][$key]??0);
-  }
-  if($fixedIncomes || $extraIncomes){
-   $heading('GAJI POKOK, SIP, PJ DAN KOMPONEN LAIN');
-   foreach($fixedIncomes as $key=>$amount)$row($key,$money($amount));
-   foreach($extraIncomes as $extra)$row('Tambahan: '.($extra['label']??'-'),$money($extra['amount']??0));
-  }
-  $extraCuts=array_values(array_filter(($s['extras']??[]),static fn($e)=>($e['type']??'')==='deduction' && (int)($e['amount']??0)===0));
-  if(($s['deductions']??[]) || ($optionalZero && $extraCuts)){
-   $heading('RINCIAN PENGURANGAN');
-   foreach(($s['deductions']??[]) as $label=>$amt){
-   $row((string)$label,$money($amt));
-   if(str_starts_with((string)$label,'Tidak Hadir (')){
-    $days=(int)($s['input']['absence_days']??0);
-    $perDay=$days>0?(int)round((int)$amt/$days):0;
-    $note('    '.$days.' hari x tarif '.$money($perDay).'/hari = '.$money($amt));
+    $poli=($shift['type']??'')==='poli2';
+    $counts[$poli?'bpjs_poli2':'bpjs_regular']+=(int)($shift['bpjs_paid']??0);
+    $counts[$poli?'umum_poli2':'umum_regular']+=(int)($shift['general_paid']??0);
+    foreach(['usg','homecare_clinic','homecare_own'] as $key)$counts[$key]+=(int)($shift[$key]??0);
    }
   }
-   if($optionalZero){
-    foreach($extraCuts as $extra)$row('Potongan: '.($extra['label']??'-'),$money(0));
+  $noPatientFee=($rules['patient_mode']??'all')==='none';
+  foreach([
+   ['bpjs_regular','BPJS - reguler','bpjs_fee'],
+   ['bpjs_poli2','BPJS - Poli 2','bpjs_fee'],
+   ['umum_regular','Umum - reguler','general_fee'],
+   ['umum_poli2','Umum - Poli 2','general_fee'],
+   ['usg','USG','usg_fee'],
+   ['homecare_clinic','Homecare - kendaraan klinik','homecare_clinic'],
+   ['homecare_own','Homecare - kendaraan sendiri','homecare_own'],
+  ] as [$key,$label,$rateKey]){
+   $qty=(int)$counts[$key];if($qty<=0)continue;
+   $rate=(int)($rules[$rateKey]??0);
+   if($noPatientFee && in_array($key,['bpjs_regular','bpjs_poli2','umum_regular','umum_poli2'],true))$rate=0;
+   $add('PASIEN / LAYANAN',$label,$qty,$moneyShort($rate),$qty*$rate);
+  }
+
+  // Tindakan: 1 baris untuk jenis/tarif yang sama, tanpa uraian rumus panjang.
+  $actionGroups=[];
+  foreach($actionRows as $action){
+   $qty=(int)($action['qty']??0);if($qty<=0)continue;
+   $label=(string)($action['label']??'Tindakan');
+   $mode=(string)($action['mode']??'fixed');
+   $rate=$mode==='fixed'?$moneyShort($action['unit_fee']??0):$numShort($action['percentage']??0).'%';
+   $key=$label.'|'.$mode.'|'.$rate;
+   if(!isset($actionGroups[$key]))$actionGroups[$key]=['label'=>$label,'count'=>0,'rate'=>$rate,'amount'=>0];
+   $actionGroups[$key]['count']+=$qty;
+   $actionGroups[$key]['amount']+=(int)($action['fee']??0);
+  }
+  foreach($actionGroups as $action)$add('TINDAKAN',$action['label'],(int)$action['count'],$action['rate'],(int)$action['amount']);
+
+  foreach(['Gaji Pokok','Fee SIP','Fee PJ'] as $name){
+   $amount=(int)($s['income'][$name]??0);
+   if($amount>0 || ($optionalZero && array_key_exists($name,(array)($s['income']??[]))))$add('LAINNYA',$name,0,'',$amount);
+  }
+  foreach(($s['extras']??[]) as $extra){
+   if(($extra['type']??'')!=='income')continue;
+   $amount=(int)($extra['amount']??0);if(!$optionalZero && $amount===0)continue;
+   $add('LAINNYA',(string)($extra['label']??'Tambahan'),0,'',$amount);
+  }
+  foreach(($s['deductions']??[]) as $label=>$amount)$add('POTONGAN',(string)$label,0,'',(int)$amount);
+
+  $pdf->newPage();$y=792;
+  $header=function()use($pdf,$d,$period,$p,&$y){
+   $pdf->rgb(.07,.24,.55);$pdf->text(48,795,'LAMPIRAN REKAP HONOR',12.5,true);
+   $pdf->rgb(.37,.42,.50);$pdf->text(48,776,($d['name']??'-').' | '.$period,9);
+   $pdf->text(548,776,$p->slip_number??'DRAFT - BELUM SAH',8,false,'right');
+   $pdf->rgb(.73,.78,.87);$pdf->line(48,763,548,763,.7);
+   $pdf->rgb(.09,.26,.57);
+   $pdf->text(55,744,'KOMPONEN',8.3,true);
+   $pdf->text(343,744,'JUMLAH',8.3,true,'right');
+   $pdf->text(436,744,'TARIF',8.3,true,'right');
+   $pdf->text(541,744,'NOMINAL (Rp)',8.3,true,'right');
+   $pdf->rgb(.75,.80,.89);$pdf->line(48,735,548,735,.5);
+   $y=719;
+  };
+  $header();
+  $ensure=function(int $needed)use($pdf,&$y,$header){
+   if($y-$needed<65){$pdf->newPage();$header();}
+  };
+  $section=function(string $title)use($pdf,&$y,$ensure){
+   $ensure(44);$y-=5;$pdf->rgb(.91,.95,1);$pdf->rectangle(48,$y-4,500,20,true);
+   $pdf->rgb(.08,.27,.62);$pdf->text(55,$y+2,$title,8.5,true);$y-=29;
+  };
+  $lineRow=function(string $label,string $qty,string $rate,string $amount,bool $bold=false)use($pdf,&$y,$ensure){
+   $ensure(19);
+   $label=trim($label);
+   $limit=44;
+   if(function_exists('mb_strlen') && function_exists('mb_substr')){
+    if(mb_strlen($label,'UTF-8')>$limit)$label=mb_substr($label,0,$limit-3,'UTF-8').'...';
+   }elseif(strlen($label)>$limit){$label=substr($label,0,$limit-3).'...';}
+   $pdf->rgb($bold?.08:.20,$bold?.27:.24,$bold?.61:.31);
+   $pdf->text(55,$y,$label,$bold?8.6:8.4,$bold);
+   if($qty!=='')$pdf->text(343,$y,$qty,8.4,$bold,'right');
+   if($rate!=='')$pdf->text(436,$y,$rate,8.4,$bold,'right');
+   $pdf->text(541,$y,$amount,$bold?8.8:8.4,$bold,'right');
+   $y-=19;
+  };
+  foreach($groups as $name=>$entries){
+   if(!$entries)continue;
+   $section($name);
+   foreach($entries as $entry){
+    $lineRow($entry['label'],$entry['count']>0?$entry['count'].'x':'',$entry['rate'],$moneyShort($entry['amount']));
    }
-   $subTotal('TOTAL PENGURANGAN',(int)($s['deduction_total']??0));
   }
-
-  $heading('RIWAYAT CASH YANG SUDAH DITERIMA');
-  if(!$cashRows)$note('Belum ada pengambilan cash yang dicatat.');
-  $running=0;
-  foreach($cashRows as $i=>$cash){
-   $amount=(int)($cash['amount']??0);$running+=$amount;
-   $row(($i+1).'. '.$date($cash['date']??null).' | '.($cash['note']??'Cash'),$money($amount));
-   $note('    Akumulasi cash '.$money($running).' | sisa hak '.$money((int)($s['net_total']??0)-$running));
-  }
-  $subTotal('TOTAL SUDAH DITERIMA CASH',(int)($s['cash_total']??0));
-
-  $heading('REKONSILIASI PEMBAYARAN');
-  $row('Total penghasilan honor',$money($s['gross_total']??0));
-  $row('Total potongan',$money($s['deduction_total']??0));
-  $row('Total hak dokter setelah potongan',$money($s['net_total']??0),true);
-  $row('Dikurangi cash yang sudah diterima',$money($s['cash_total']??0));
-  $subTotal('SISA BELUM DIBAYAR / RENCANA TRANSFER',(int)($s['transfer_due']??0));
-  $note('Catatan: Sisa rencana transfer bukan bukti bahwa uang sudah ditransfer. Konfirmasi pembayaran harus berasal dari bukti transaksi.');
-  $note('Angka di lampiran berasal dari snapshot penggajian saat slip disimpan/disetujui. Perubahan tarif masa depan tidak mengubah isi slip ini.');
-  $note('Dokumen internal. Jangan lampirkan identitas atau rekam medis pasien pada slip honor.');
+  $section('TOTAL PEMBAYARAN');
+  $lineRow('Total penerimaan','','',$moneyShort($s['gross_total']??0));
+  if((int)($s['deduction_total']??0)!==0)$lineRow('Total potongan','','',$moneyShort($s['deduction_total']??0));
+  $lineRow('Hak dokter','','',$moneyShort($s['net_total']??0),true);
+  $cashCount=count($s['cash']??[]);
+  $lineRow('Cash diterima'.($cashCount>1?' ('.$cashCount.' transaksi)':''),'','',$moneyShort($s['cash_total']??0));
+  $pdf->rgb(.6,.7,.85);$pdf->line(315,$y+7,541,$y+7,.7);
+  $lineRow('SISA TRANSFER','','',$moneyShort($s['transfer_due']??0),true);
+  $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
   return $pdf->output();
  }
 }
