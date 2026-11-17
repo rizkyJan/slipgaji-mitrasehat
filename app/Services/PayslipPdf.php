@@ -20,6 +20,12 @@ class PayslipPdf
         $c = $payroll->calculation_snapshot;
         $e = $c['employee'];
         $period = Carbon::createFromFormat('!Y-m', $payroll->period)->locale('id')->translatedFormat('F Y');
+        // R4.15 - hanya INFORMASI periode kerja di PDF, tanpa mengubah kalkulasi gaji.
+        $baseMonth = Carbon::createFromFormat('!Y-m', (string) $payroll->period);
+        $workFrom = $baseMonth->copy()->subMonthNoOverflow()->day(26);
+        $workUntil = $baseMonth->copy()->day(25);
+        $workRange = $workFrom->locale('id')->translatedFormat('d F Y')
+            .' - '.$workUntil->locale('id')->translatedFormat('d F Y');
         $clinic = $setting('clinic_name', 'PT. MITRA SEHAT MAJU SENTOSA');
         $address = $setting('clinic_address', 'Sukoharjo, Jawa Tengah');
         $style = $setting('slip_style', 'classic');
@@ -52,6 +58,11 @@ class PayslipPdf
         $pdf->rgb(.08,.23,.52);
         $pdf->text(48, $y, 'No. Slip', 8.8);
         $pdf->text(136, $y, ': '.($payroll->slip_number ?: 'DRAFT - BELUM SAH'), 8.8, true);
+        $pdf->rgb(.17,.20,.18);
+        $y -= 18;
+        $pdf->rgb(.33,.40,.51);
+        $pdf->text(48, $y, 'Periode kerja', 8);
+        $pdf->text(136, $y, ': '.$workRange, 8);
         $pdf->rgb(.17,.20,.18);
         $y -= 24;
 
@@ -98,10 +109,7 @@ class PayslipPdf
         foreach ($c['employee_deductions'] as $label => $amount) $line($label, (int) $amount);
         if (!array_key_exists('PPh 21', $c['employee_deductions'])) $line('PPh 21', 0);
         $line('Total Pengurangan', (int) ($style === 'classic' ? $c['deduction_total'] : $c['employee_deduction_total']), true);
-        if ($style !== 'classic') {
-            $heading('Iuran Ditanggung Klinik (Bukan Potongan Pegawai)');
-            foreach ($c['employer_contributions'] as $label => $amount) $line($label, (int) $amount);
-        }
+        if ($style !== 'classic') $y -= 12; // Jarak ringkasan setelah blok iuran klinik disembunyikan.
         if ($y < 195) {
             $pdf->newPage();
             $pdf->rgb(.08,.23,.52);
