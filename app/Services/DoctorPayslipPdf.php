@@ -50,7 +50,10 @@ class DoctorPayslipPdf {
   $pdf->text(315,741,'Nama Dokter',9);$pdf->text(407,741,': '.($d['name']??'-'),9,true);
   $pdf->text(48,724,'NIP',9);$pdf->text(139,724,': '.($d['nip']??'-'),9);
   $pdf->text(315,724,'Unit / Cabang',9);$pdf->text(407,724,': '.($d['branch']??'-'),9);
-  $pdf->text(48,707,'Jenis Profil',9);$pdf->text(139,707,': '.($d['profile']??'-'),9);
+  $profileText=(string)($d['profile']??'-');
+  // Hanya tampilan PDF untuk unit Darasan, aturan honor tetap memakai profil asli.
+  if(stripos($profileText,'Darasan')!==false){$profileText=preg_replace('~\s*/\s*Homecare\b~i','',$profileText);}
+  $pdf->text(48,707,'Jenis Profil',9);$pdf->text(139,707,': '.$profileText,9);
   $pdf->text(48,690,'Nomor Slip',9);$pdf->text(139,690,': '.($p->slip_number??'DRAFT - BELUM SAH'),9,true);
   $pdf->rgb(.17,.20,.18);$y=654;
   $title=function(string $label)use($pdf,&$y){
@@ -110,13 +113,13 @@ class DoctorPayslipPdf {
   $pdf->text(57,$y,'TOTAL HAK DOKTER',11,true);
   $pdf->text(535,$y,'Rp '.number_format($s['net_total'],0,',','.'),12,true,'right');$y-=52;
   $pdf->rgb(.17,.20,.18);
-  $line('SUDAH DITERIMA CASH',(int)$s['cash_total']);
-  $line('SISA BELUM DIBAYAR / RENCANA TRANSFER',(int)$s['transfer_due'],true);
+  $line('Diterima Cash',(int)$s['cash_total']);
+  $line('Transfer',(int)$s['transfer_due'],true);
   // Detail cash pada halaman pertama (maksimal 3 entri) agar terlihat saat PDF diterima via email.
   $cashRows=$s['cash']??[]; $shownCash=min(3,count($cashRows));
   if($shownCash>0){
    if($y<265){$pdf->newPage();$y=785;}
-   $pdf->rgb(.08,.27,.65);$pdf->text(55,$y,'RINCIAN CASH SUDAH DITERIMA',9,true);$y-=20;
+   $pdf->rgb(.08,.27,.65);$pdf->text(55,$y,'RINCIAN CASH',9,true);$y-=20;
    for($i=0;$i<$shownCash;$i++){
     $c=$cashRows[$i];
     $label=($c['date']??'-').' - '.substr((string)($c['note']??'Cash'),0,30);
@@ -126,7 +129,7 @@ class DoctorPayslipPdf {
     $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'+'.(count($cashRows)-$shownCash).' catatan cash lainnya ada di lampiran',8);$y-=17;
    }
   } else {
-   $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'Belum ada pembayaran cash yang dicatat.',8);$y-=18;
+   $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'Belum ada cash tercatat.',8);$y-=18;
   }
   $pdf->rgb(.17,.20,.18);
   foreach(explode("\n",wordwrap(Terbilang::rupiah((int)$s['net_total']),92,"\n",false)) as $phrase){
@@ -144,7 +147,7 @@ class DoctorPayslipPdf {
    $pdf->text(145,$qrY+40,'pembayaran cash, dan transfer.',8);
   }else{$pdf->text(48,$y-52,'DRAFT - BELUM DISETUJUI',10,true);}
   $pdf->rgb(.48,.50,.54);$pdf->text(48,38,'Dokumen rahasia. Diterbitkan sistem Mitra Sehat Payroll.',7.5);
-  // Lampiran ringkas R4.13: hanya tata letak, semua nominal dari snapshot.
+  // Lampiran ringkas R4.14: label, jadwal gajian, dan subtotal tanpa mengubah nominal snapshot.
   // Halaman utama di atas tidak diubah.
   $moneyShort=static fn($value):string=>number_format((int)round((float)($value??0)),0,',','.');
   $numShort=static fn($value):string=>rtrim(rtrim(number_format((float)($value??0),2,',','.'),'0'),',');
@@ -243,27 +246,44 @@ class DoctorPayslipPdf {
   }
   foreach(($s['deductions']??[]) as $label=>$amount)$add('POTONGAN',(string)$label,0,'',(int)$amount);
 
+  // Tanggal rentang kerja mengikuti aturan periode R4.7 (26 bulan lalu s.d. 25 bulan ini).
+  // Hari gajian hanya informasi jadwal, BUKAN bukti transfer.
+  [$workStart,$workEnd]=DoctorPayrollPeriod::bounds((string)$p->period);
+  $formatDate=static fn(string $date):string=>Carbon::parse($date)->locale('id')->translatedFormat('d F Y');
+  $workRange=$formatDate($workStart).' - '.$formatDate($workEnd);
+  $payPeriod=Carbon::createFromFormat('!Y-m',(string)$p->period);
+  $payDay=max(1,min(31,(int)config('doctor_slip_pdf.payday_day',26)));
+  $scheduledDate=$payPeriod->copy()->day(min($payDay,$payPeriod->daysInMonth))->toDateString();
+  $payOverrides=(array)config('doctor_slip_pdf.paydate_by_period',[]);
+  $specific=$payOverrides[(string)$p->period]??null;
+  if(is_string($specific) && preg_match('/^\d{4}-\d{2}-\d{2}$/',$specific)){
+   $verified=Carbon::createFromFormat('!Y-m-d',$specific);
+   if($verified && $verified->format('Y-m-d')===$specific)$scheduledDate=$specific;
+  }
+  $paydayText=$formatDate($scheduledDate);
   $pdf->newPage();$y=792;
-  $header=function()use($pdf,$d,$period,$p,&$y){
+  $header=function()use($pdf,$d,$period,$p,$workRange,$paydayText,&$y){
    $pdf->rgb(.07,.24,.55);$pdf->text(48,795,'LAMPIRAN REKAP HONOR',12.5,true);
-   $pdf->rgb(.37,.42,.50);$pdf->text(48,776,($d['name']??'-').' | '.$period,9);
-   $pdf->text(548,776,$p->slip_number??'DRAFT - BELUM SAH',8,false,'right');
-   $pdf->rgb(.73,.78,.87);$pdf->line(48,763,548,763,.7);
+   $pdf->rgb(.37,.42,.50);$pdf->text(48,780,($d['name']??'-').' | '.$period,9);
+   $pdf->text(548,780,$p->slip_number??'DRAFT - BELUM SAH',8,false,'right');
+   $pdf->rgb(.28,.38,.53);$pdf->text(48,761,'Periode kerja: '.$workRange,8);
+   $pdf->text(548,761,'Jadwal gajian: '.$paydayText,8,false,'right');
+   $pdf->rgb(.73,.78,.87);$pdf->line(48,748,548,748,.7);
    $pdf->rgb(.09,.26,.57);
-   $pdf->text(55,744,'KOMPONEN',8.3,true);
-   $pdf->text(343,744,'JUMLAH',8.3,true,'right');
-   $pdf->text(436,744,'TARIF',8.3,true,'right');
-   $pdf->text(541,744,'NOMINAL (Rp)',8.3,true,'right');
-   $pdf->rgb(.75,.80,.89);$pdf->line(48,735,548,735,.5);
-   $y=719;
+   $pdf->text(55,729,'KOMPONEN',8.3,true);
+   $pdf->text(343,729,'JUMLAH',8.3,true,'right');
+   $pdf->text(436,729,'TARIF',8.3,true,'right');
+   $pdf->text(541,729,'NOMINAL (Rp)',8.3,true,'right');
+   $pdf->rgb(.75,.80,.89);$pdf->line(48,720,548,720,.5);
+   $y=704;
   };
   $header();
   $ensure=function(int $needed)use($pdf,&$y,$header){
    if($y-$needed<65){$pdf->newPage();$header();}
   };
-  $section=function(string $title)use($pdf,&$y,$ensure){
+  $section=function(string $title,int $subtotal)use($pdf,&$y,$ensure,$moneyShort){
    $ensure(44);$y-=5;$pdf->rgb(.91,.95,1);$pdf->rectangle(48,$y-4,500,20,true);
-   $pdf->rgb(.08,.27,.62);$pdf->text(55,$y+2,$title,8.5,true);$y-=29;
+   $pdf->rgb(.08,.27,.62);$pdf->text(55,$y+2,$title,8.5,true);$pdf->text(541,$y+2,'Rp '.$moneyShort($subtotal),8.6,true,'right');$y-=29;
   };
   $lineRow=function(string $label,string $qty,string $rate,string $amount,bool $bold=false)use($pdf,&$y,$ensure){
    $ensure(19);
@@ -281,19 +301,20 @@ class DoctorPayslipPdf {
   };
   foreach($groups as $name=>$entries){
    if(!$entries)continue;
-   $section($name);
+   $subtotal=array_sum(array_map(static fn(array $item):int=>(int)$item['amount'],$entries));
+   $section($name,$subtotal);
    foreach($entries as $entry){
     $lineRow($entry['label'],$entry['count']>0?$entry['count'].'x':'',$entry['rate'],$moneyShort($entry['amount']));
    }
   }
-  $section('TOTAL PEMBAYARAN');
+  $section('TOTAL PEMBAYARAN',(int)($s['net_total']??0));
   $lineRow('Total penerimaan','','',$moneyShort($s['gross_total']??0));
   if((int)($s['deduction_total']??0)!==0)$lineRow('Total potongan','','',$moneyShort($s['deduction_total']??0));
   $lineRow('Hak dokter','','',$moneyShort($s['net_total']??0),true);
   $cashCount=count($s['cash']??[]);
-  $lineRow('Cash diterima'.($cashCount>1?' ('.$cashCount.' transaksi)':''),'','',$moneyShort($s['cash_total']??0));
+  $lineRow('Diterima Cash'.($cashCount>1?' ('.$cashCount.' transaksi)':''),'','',$moneyShort($s['cash_total']??0));
   $pdf->rgb(.6,.7,.85);$pdf->line(315,$y+7,541,$y+7,.7);
-  $lineRow('SISA TRANSFER','','',$moneyShort($s['transfer_due']??0),true);
+  $lineRow('Transfer','','',$moneyShort($s['transfer_due']??0),true);
   $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
   return $pdf->output();
  }
