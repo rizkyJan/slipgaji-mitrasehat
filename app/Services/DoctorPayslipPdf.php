@@ -93,7 +93,14 @@ class DoctorPayslipPdf {
   $orderedIncome+=$summaryIncome;
   $title('PENERIMAAN');
   foreach($orderedIncome as $name=>$amt)$line((string)$name,(int)$amt);
-  $line('TOTAL PENERIMAAN',(int)$s['gross_total'],true);
+  // Sisakan ruang di atas pita total agar tidak menutupi baris penerimaan terakhir.
+  $y-=16;
+  // Satu angka total penerimaan di halaman utama; jangan ulang sebagai 'hak dokter'.
+  if($y<355){$pdf->newPage();$y=775;}
+  $pdf->rgb(.08,.27,.65);$pdf->rectangle(48,$y-15,500,38,true);$pdf->rgb(1,1,1);
+  $pdf->text(57,$y,'TOTAL PENERIMAAN',11,true);
+  $pdf->text(535,$y,'Rp '.number_format((int)$s['gross_total'],0,',','.'),12,true,'right');$y-=52;
+  $pdf->rgb(.17,.20,.18);
   $summaryDeductions=$s['deductions']??[];
   if($optionalZero){
    foreach(($s['extras']??[]) as $extra){
@@ -108,15 +115,13 @@ class DoctorPayslipPdf {
    foreach($summaryDeductions as $name=>$amt)$line((string)$name,(int)$amt);
    $line('TOTAL PENGURANGAN',(int)$s['deduction_total'],true);
   }
-  if($y<355){$pdf->newPage();$y=775;}
-  $pdf->rgb(.08,.27,.65);$pdf->rectangle(48,$y-15,500,38,true);$pdf->rgb(1,1,1);
-  $pdf->text(57,$y,'TOTAL HAK DOKTER',11,true);
-  $pdf->text(535,$y,'Rp '.number_format($s['net_total'],0,',','.'),12,true,'right');$y-=52;
-  $pdf->rgb(.17,.20,.18);
-  $line('Diterima Cash',(int)$s['cash_total']);
+  // Cash bersifat opsional: jangan tampilkan baris, catatan, atau nilai nol jika tidak ada pembayaran cash.
+  $cashTotal=(int)($s['cash_total']??0);
+  if($cashTotal>0)$line('Diterima Cash',$cashTotal);
   $line('Transfer',(int)$s['transfer_due'],true);
-  // Detail cash pada halaman pertama (maksimal 3 entri) agar terlihat saat PDF diterima via email.
-  $cashRows=$s['cash']??[]; $shownCash=min(3,count($cashRows));
+  // Rincian cash hanya jika benar-benar ada cash diterima (maksimal 3 entri di halaman utama).
+  $cashRows=$cashTotal>0?(array)($s['cash']??[]):[];
+  $shownCash=min(3,count($cashRows));
   if($shownCash>0){
    if($y<265){$pdf->newPage();$y=785;}
    $pdf->rgb(.08,.27,.65);$pdf->text(55,$y,'RINCIAN CASH',9,true);$y-=20;
@@ -128,8 +133,6 @@ class DoctorPayslipPdf {
    if(count($cashRows)>$shownCash){
     $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'+'.(count($cashRows)-$shownCash).' catatan cash lainnya ada di lampiran',8);$y-=17;
    }
-  } else {
-   $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'Belum ada cash tercatat.',8);$y-=18;
   }
   $pdf->rgb(.17,.20,.18);
   foreach(explode("\n",wordwrap(Terbilang::rupiah((int)$s['net_total']),92,"\n",false)) as $phrase){
@@ -144,7 +147,7 @@ class DoctorPayslipPdf {
    $pdf->qr($v->url($p),48,$qrY,86);
    $pdf->rgb(.08,.27,.65);$pdf->text(145,$qrY+72,'VERIFIKASI KEASLIAN',9.5,true);
    $pdf->rgb(.35,.4,.48);$pdf->text(145,$qrY+54,'Pindai untuk cocokkan total resmi,',8);
-   $pdf->text(145,$qrY+40,'pembayaran cash, dan transfer.',8);
+   $pdf->text(145,$qrY+40,$cashTotal>0?'pembayaran cash, dan transfer.':'dan nominal transfer.',8);
   }else{$pdf->text(48,$y-52,'DRAFT - BELUM DISETUJUI',10,true);}
   $pdf->rgb(.48,.50,.54);$pdf->text(48,38,'Dokumen rahasia. Diterbitkan sistem Mitra Sehat Payroll.',7.5);
   // Lampiran ringkas R4.14: label, jadwal gajian, dan subtotal tanpa mengubah nominal snapshot.
@@ -307,14 +310,8 @@ class DoctorPayslipPdf {
     $lineRow($entry['label'],$entry['count']>0?$entry['count'].'x':'',$entry['rate'],$moneyShort($entry['amount']));
    }
   }
-  $section('TOTAL PEMBAYARAN',(int)($s['net_total']??0));
-  $lineRow('Total penerimaan','','',$moneyShort($s['gross_total']??0));
-  if((int)($s['deduction_total']??0)!==0)$lineRow('Total potongan','','',$moneyShort($s['deduction_total']??0));
-  $lineRow('Hak dokter','','',$moneyShort($s['net_total']??0),true);
-  $cashCount=count($s['cash']??[]);
-  $lineRow('Diterima Cash'.($cashCount>1?' ('.$cashCount.' transaksi)':''),'','',$moneyShort($s['cash_total']??0));
-  $pdf->rgb(.6,.7,.85);$pdf->line(315,$y+7,541,$y+7,.7);
-  $lineRow('Transfer','','',$moneyShort($s['transfer_due']??0),true);
+  // Tidak mengulang total tagihan, hak dokter, cash, atau transfer di lampiran.
+  // Rekap pembayaran final cukup terlihat pada halaman utama; lampiran hanya rincian per kelompok.
   $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
   return $pdf->output();
  }
