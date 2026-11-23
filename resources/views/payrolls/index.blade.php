@@ -20,6 +20,7 @@
 @endpush
 
 @section('content')
+<div class="alert alert-success" style="margin-bottom:15px">Jadwal gajian bersama periode <b>{{ $period }}</b>: <b>{{ \Carbon\Carbon::parse(\App\Services\PayrollPayday::forPeriod((string)$period))->locale('id')->translatedFormat('d F Y') }}</b> · Karyawan dan Dokter. @can('manage-settings')<a href="{{ route('payday.index',['period'=>$period]) }}">Ubah Jadwal</a>@endcan</div>
 <div class="page-head">
     <div>
         <p class="eyebrow">PERIODE PENGGAJIAN</p>

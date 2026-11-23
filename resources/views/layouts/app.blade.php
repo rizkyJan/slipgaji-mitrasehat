@@ -23,6 +23,7 @@
         @can('manage-settings')
             <div class="nav-caption">Administrasi</div>
             <a class="nav-link {{ request()->routeIs('settings.*','google.*') ? 'active' : '' }}" href="{{ route('settings.index') }}"><span class="nav-icon">⚙</span> Pengaturan & BPJS</a>
+            <a class="nav-link {{ request()->routeIs('payday.*') ? 'active' : '' }}" href="{{ route('payday.index') }}"><span class="nav-icon">▣</span> Jadwal Gajian</a>
             <a class="nav-link {{ request()->routeIs('reports.audit') ? 'active' : '' }}" href="{{ route('reports.audit') }}"><span class="nav-icon">◷</span> Log Aktivitas</a>
         @endcan
         <div class="side-bottom">

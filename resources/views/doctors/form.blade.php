@@ -23,16 +23,9 @@ $editing=isset($doctorPayroll);
 $chosenMode=old('input_mode',$input['input_mode']??(!empty($input['shifts'])?'daily':'recap'));
 $rateConfig=$assignment?->rules??[];
 $save=$editing?route('doctors.update',$doctorPayroll):route('doctors.store');
-// Jadwal gajian default; dapat diganti admin per slip tanpa mengubah .env.
-$paydayMonth=\Carbon\Carbon::createFromFormat('!Y-m',(string)$period);
-$paydayDay=max(1,min(31,(int)config('doctor_slip_pdf.payday_day',26)));
-$defaultPayDate=$paydayMonth->copy()->day(min($paydayDay,$paydayMonth->daysInMonth))->toDateString();
-$periodDates=(array)config('doctor_slip_pdf.paydate_by_period',[]);
-$periodOverride=$periodDates[(string)$period]??null;
-if(is_string($periodOverride) && preg_match('/^\d{4}-\d{2}-\d{2}$/',$periodOverride)){
- [$yy,$mm,$dd]=array_map('intval',explode('-',$periodOverride));
- if(checkdate($mm,$dd,$yy))$defaultPayDate=$periodOverride;
-}
+// Tanggal bawaan sekarang dari pengaturan bersama semua payroll.
+// Tanggal tersimpan pada slip dokter tetap dipertahankan sebagai override per slip.
+$defaultPayDate=\App\Services\PayrollPayday::forPeriod((string)$period);
 @endphp
 <div class="page-head"><div><p class="eyebrow">PENGGAJIAN DOKTER</p><h1 class="page-title">{{ $editing?'Edit Draft':'Rekap' }} Honor Dokter</h1><p class="page-sub">Cukup isi jumlah kali (×) seperti rekap bulanan. Sistem menghitung nominal otomatis. Detail harian tersedia bila diperlukan.</p></div><a class="btn btn-outline" href="{{ route('doctors.index') }}">Kembali</a></div>
 <div class="card" style="margin-bottom:16px"><div class="card-pad"><form method="get" action="{{ route('doctors.create') }}" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
@@ -46,10 +39,10 @@ if(is_string($periodOverride) && preg_match('/^\d{4}-\d{2}-\d{2}$/',$periodOverr
 <input type="hidden" name="doctor_assignment_id" value="{{ $assignment->id }}"><input type="hidden" name="period" value="{{ $period }}">
 <div class="dr-main" style="display:grid;grid-template-columns:minmax(0,1fr) 325px;gap:20px;align-items:start">
 <div>
-<div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>Jadwal Gajian di Slip Dokter</h3><p class="card-sub">Pilih tanggal rencana pembayaran. Periode kerja dan perhitungan honor tidak berubah.</p></div></div>
+<div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>Jadwal Gajian Honor Dokter</h3><p class="card-sub">Tanggal bawaan berasal dari Jadwal Gajian Bersama. Bisa diganti khusus untuk slip ini tanpa mengubah payroll karyawan.</p></div></div>
 <div class="card-pad"><div class="field" style="max-width:300px"><label for="doctor-pay-date">Tanggal Gajian</label>
 <input id="doctor-pay-date" class="input" type="date" name="pay_date" value="{{ old('pay_date',$input['pay_date']??$defaultPayDate) }}" required></div>
-<p class="dr-help" style="margin-top:10px">Tanggal ini ditampilkan pada lampiran PDF. Bukan bukti bahwa dana sudah ditransfer. Setelah slip disetujui, tanggal ikut terkunci.</p>
+<p class="dr-help" style="margin-top:10px">Tanggal ini ditampilkan di PDF dokter; bukan bukti transfer. Setelah disetujui, tanggal terkunci. @can('manage-settings')<a href="{{ route('payday.index',['period'=>$period]) }}">Atur tanggal gajian semua payroll</a>@endcan</p>
 @error('pay_date')<div class="dr-help" style="color:#b91c1c">{{ $message }}</div>@enderror
 </div></div>
 <details class="dr-basic" @if((int)($input['base_salary']??0)>0 || (int)($input['sip_fee']??0)>0 || (int)($input['pj_fee']??0)>0 || (int)($input['absence_days']??0)>0) open @endif><summary>Honor tetap / SIP / PJ / potongan tidak hadir (opsional)</summary>

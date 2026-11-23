@@ -8,6 +8,7 @@ use App\Http\Controllers\GoogleConnectionController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\PayrollPaydayController;
 use App\Http\Controllers\SlipVerificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DoctorPayrollController;
@@ -78,6 +79,8 @@ Route::middleware(['auth', \App\Http\Middleware\NoStoreSensitiveContent::class])
         Route::put('/doctor-settings/procedure/{procedure}', [DoctorAssignmentController::class, 'procedureUpdate'])->name('doctors.procedures.update');
         Route::post('/doctor-settings/procedure/{procedure}/status', [DoctorAssignmentController::class, 'procedureStatus'])->name('doctors.procedures.status');
         Route::get('/settings', [SettingsController::class,'index'])->name('settings.index');
+        Route::get('/payroll-paydays', [PayrollPaydayController::class,'index'])->name('payday.index');
+        Route::post('/payroll-paydays', [PayrollPaydayController::class,'save'])->name('payday.save');
         Route::post('/settings/clinic', [SettingsController::class,'clinic'])->name('settings.clinic');
         Route::post('/settings/wages', [SettingsController::class,'wage'])->name('settings.wage');
         Route::post('/settings/bpjs', [SettingsController::class,'rule'])->name('settings.rule');
