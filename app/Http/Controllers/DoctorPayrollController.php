@@ -48,6 +48,7 @@ class DoctorPayrollController extends Controller {
   $data=$request->validate([
    'doctor_assignment_id'=>['required','integer','exists:doctor_assignments,id'],'period'=>['required','date_format:Y-m'],
    'input_mode'=>['nullable',Rule::in(['recap','daily'])],
+   'pay_date'=>['nullable','date_format:Y-m-d'],
    'recap_transport'=>['nullable','array','max:80'],
    'recap_transport.*.shift_type'=>['required',Rule::in(array_keys(config('doctor_payroll.shift_labels')))],
    'recap_transport.*.qty'=>['required','integer','between:0,100'],

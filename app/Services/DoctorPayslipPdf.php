@@ -258,6 +258,13 @@ class DoctorPayslipPdf {
    $verified=Carbon::createFromFormat('!Y-m-d',$specific);
    if($verified && $verified->format('Y-m-d')===$specific)$scheduledDate=$specific;
   }
+  // Prioritas tanggal yang dipilih admin di web dan tersimpan pada snapshot slip.
+  // Slip lama tanpa pay_date tetap menggunakan pengaturan R4.14 (.env).
+  $savedPayDate=$p->input_snapshot['pay_date']??$s['input']['pay_date']??null;
+  if(is_string($savedPayDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/',$savedPayDate)){
+   [$yy,$mm,$dd]=array_map('intval',explode('-',$savedPayDate));
+   if(checkdate($mm,$dd,$yy))$scheduledDate=$savedPayDate;
+  }
   $paydayText=$formatDate($scheduledDate);
   $pdf->newPage();$y=792;
   $header=function()use($pdf,$d,$period,$p,$workRange,$paydayText,&$y){
