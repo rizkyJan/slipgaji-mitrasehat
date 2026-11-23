@@ -7,6 +7,7 @@ use App\Models\DoctorProcedure;
 use App\Models\DoctorDelivery;
 use App\Services\DoctorPayrollCalculator;
 use App\Services\DoctorPayslipPdf;
+use App\Services\DoctorImportShiftTimes;
 use App\Services\DoctorSlipVerification;
 use App\Services\GmailService;
 use Illuminate\Http\Request;
@@ -40,9 +41,16 @@ class DoctorPayrollController extends Controller {
  public function edit(DoctorPayroll $doctorPayroll){
   abort_unless($doctorPayroll->status==='draft',403,'Slip sudah disetujui dan terkunci');
   $assignment=$doctorPayroll->assignment()->with('employee')->firstOrFail();$assignments=DoctorAssignment::with('employee')->where('active',true)->get();$period=$doctorPayroll->period;
-  $input=$this->mergeOld($doctorPayroll->input_snapshot);
+  // Isi rentang jam pada tampilan edit dari arsip Excel, hanya jika pencocokan tepat.
+  // Tidak menyimpan perubahan sampai admin memeriksa dan menekan Simpan Draft.
+  $recovery=['input'=>(array)$doctorPayroll->input_snapshot,'recovered'=>0];
+  try {
+   $recovery=app(DoctorImportShiftTimes::class)->suggest($doctorPayroll,(array)$doctorPayroll->input_snapshot);
+  } catch (\Throwable $e) { report($e); }
+  $recoveredImportTimes=(int)$recovery['recovered'];
+  $input=$this->mergeOld($recovery['input']);
   $procedures=DoctorProcedure::where('active',true)->where(fn($q)=>$q->whereNull('branch')->orWhere('branch',$assignment->branch))->orderBy('label')->get();
-  return view('doctors.form',compact('assignments','assignment','period','input','procedures','doctorPayroll'));
+  return view('doctors.form',compact('assignments','assignment','period','input','procedures','doctorPayroll','recoveredImportTimes'));
  }
  private function fields(Request $request):array {
   $data=$request->validate([

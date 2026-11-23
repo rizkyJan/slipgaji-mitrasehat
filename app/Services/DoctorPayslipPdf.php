@@ -159,7 +159,7 @@ class DoctorPayslipPdf {
      // Hanya tampilkan jam asli yang tersimpan; jangan membuat waktu fiktif dari durasi.
      if(preg_match('/^\d{2}:\d{2}$/',$startTime) && preg_match('/^\d{2}:\d{2}$/',$endTime)){
       $label.=' ('.$startTime.' - '.$endTime.')';
-     }else{$label.=' ('.$numShort($tr['hours_per_visit']??0).' jam)';}
+     }else{$label.=' (jam belum tercatat)';}
     }
     $key=$label.'|'.$per;
     if(!isset($transportGrouped[$key]))$transportGrouped[$key]=['label'=>$label,'count'=>0,'per'=>$per,'amount'=>0];
@@ -175,7 +175,7 @@ class DoctorPayslipPdf {
      $startTime=(string)($shift['start_time']??'');$endTime=(string)($shift['end_time']??'');
      if(preg_match('/^\d{2}:\d{2}$/',$startTime) && preg_match('/^\d{2}:\d{2}$/',$endTime)){
       $label.=' ('.$startTime.' - '.$endTime.')';
-     }else{$label.=' ('.$numShort($worked).' jam)';}
+     }else{$label.=' (jam belum tercatat)';}
     }
     if(($shift['transport_mode']??'')==='manual')$label.=' (koreksi)';
     $per=(int)($shift['transport']??0);

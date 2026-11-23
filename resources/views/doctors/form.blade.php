@@ -57,7 +57,10 @@ $defaultPayDate=\App\Services\PayrollPayday::forPeriod((string)$period);
 <p class="dr-help" style="margin-top:12px">Pilih salah satu mode. Input mode lain tidak akan dihitung supaya tidak terjadi gaji ganda.</p></div></div>
 <section id="dr-monthly-mode" class="dr-mode-block">
 <div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>2. Uang Transport — Berapa Kali Hadir?</h3><p class="card-sub">Contoh: Hari biasa Rp70.000 × 5 kali. Untuk jam parsial, buka 'Jam khusus' pada baris itu.</p></div></div>
-<div class="card-pad"><div class="dr-recap-list" id="dr-recap-transport"></div><div class="dr-toolbar" style="margin-top:12px"><button type="button" class="btn btn-outline" id="add-recap-transport">+ Tambah Variasi Shift</button></div><p class="dr-help" style="margin-top:8px">Jika ada hari biasa yang full dan parsial, gunakan dua baris Hari Biasa dengan durasi berbeda. Tidak perlu mengisi tanggal untuk rekap bulanan.</p></div></div>
+<div class="card-pad">@if(!empty($recoveredImportTimes))
+<div class="alert alert-success" style="margin-bottom:16px">Jam praktik dari arsip Excel berhasil dicocokkan untuk <strong>{{ $recoveredImportTimes }} kedatangan</strong>. Periksa jam Mulai dan Selesai, lalu klik <strong>Simpan Perubahan Draft</strong> agar ikut tersimpan di PDF.</div>
+@endif
+<div class="dr-recap-list" id="dr-recap-transport"></div><div class="dr-toolbar" style="margin-top:12px"><button type="button" class="btn btn-outline" id="add-recap-transport">+ Tambah Variasi Shift</button></div><p class="dr-help" style="margin-top:8px">Jika ada hari biasa yang full dan parsial, gunakan dua baris Hari Biasa dengan durasi berbeda. Tidak perlu mengisi tanggal untuk rekap bulanan.</p></div></div>
 <div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>3. Uang Pasien & Layanan — Berapa Pasien/Kali?</h3><p class="card-sub">Isi jumlah dari rekap akhir bulan. Nominal = jumlah × tarif dokter.</p></div></div>
 <div class="card-pad"><div class="dr-recap-list" id="dr-recap-counts"></div><p class="dr-help" style="margin-top:12px"><b>Poli 2:</b> kolom 'setelah 20' hanya untuk pasien yang mendapat fee mulai urutan ke-21 <b>pada setiap kedatangan</b>. Jangan menghitung 20 dari total bulanan. Jika belum ada pembagian pasien, gunakan Detail Harian untuk menghitung tepat.</p></div></div>
 </section>
@@ -117,16 +120,18 @@ const recapLabels=[
 function recapTransport(row={}){
  const i=counts.recap_transport++, key=x=>`recap_transport[${i}][${x}]`;
  const type=row.shift_type||'biasa', num=row.qty??0;
+ const wasPartial=(row.hours_per_visit!==undefined && row.hours_per_visit!==null && row.hours_per_visit!=='');
+ const openTime=Boolean(row.start_time||row.end_time||wasPartial);
  const options=Object.entries(shiftsLabels).map(([k,v])=>`<option value="${esc(k)}" ${k===type?'selected':''}>${esc(v)}</option>`).join('');
  const html=`<div class="dr-recap-row dr-transport-item">
   <div class="field"><label>Jenis Shift</label><select class="input" name="${key('shift_type')}">${options}</select><small data-full-rate></small></div>
   <div class="field"><label>Jumlah (×)</label><input class="input" name="${key('qty')}" type="number" min="0" max="100" value="${esc(num)}" required></div>
   <div class="dr-recap-value"><small data-formula></small><b data-subtotal>Rp0</b></div>
-  <details class="dr-recap-time"><summary class="dr-help">Jam khusus / parsial (opsional)</summary><div class="dr-grid" style="margin-top:10px">
+  <details class="dr-recap-time" ${openTime?'open':''}><summary class="dr-help">Jam praktik (mulai - selesai)</summary><div class="dr-grid" style="margin-top:10px">
    ${field(key('start_time'),'Mulai (opsional)','time',row.start_time??'')}
    ${field(key('end_time'),'Selesai (opsional)','time',row.end_time??'')}
-   ${field(key('hours_per_visit'),'Durasi per kedatangan (jam)','number',row.hours_per_visit??'','min="0.25" max="24" step="0.25" placeholder="Full shift"')}
-  </div><p class="dr-help">Isi jam mulai & selesai ATAU durasi; bila kosong, dianggap full shift. Kekurangan hingga 60 menit dari standar tetap dibayar transport penuh; lebih dari 60 menit diprorata. Fee pasien tetap sesuai jumlah berfee.</p></details>
+   ${wasPartial?`<input type="hidden" name="${key('hours_per_visit')}" value="${esc(row.hours_per_visit)}">`:''}
+  </div><p class="dr-help">Untuk shift parsial, isi jam mulai dan selesai sesuai Excel. Data lama tanpa jam tetap memakai nilai tersimpan untuk menghitung honor sampai diperbaiki.</p></details>
   <button type="button" data-delete-recap="1" class="btn btn-outline btn-sm" style="justify-self:start">Hapus baris</button>
  </div>`;
  const div=document.getElementById('dr-recap-transport');div.insertAdjacentHTML('beforeend',html);
@@ -146,7 +151,7 @@ function updateRecapTotals(){
   const qty=Number(item.querySelector('[name$="[qty]"]').value||0);
   const std=Number(shiftHours[t]??defaultHours) || 5;
   const st=item.querySelector('[name$="[start_time]"]').value, en=item.querySelector('[name$="[end_time]"]').value;
-  const custom=item.querySelector('[name$="[hours_per_visit]"]').value;
+  const custom=item.querySelector('[name$="[hours_per_visit]"]')?.value??'';
   const worked=timeHours(st,en)??(custom?Number(custom):std);
   const full=Number(shiftRates[t]||0);
   const fullTransport=Math.round(worked*60)+60>=Math.round(std*60);
