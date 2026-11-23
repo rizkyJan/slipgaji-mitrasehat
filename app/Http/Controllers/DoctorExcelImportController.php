@@ -261,12 +261,21 @@ class DoctorExcelImportController extends Controller
                 $minutes = ($eh * 60 + $em) - ($sh * 60 + $sm);
                 if ($minutes <= 0) $minutes += 1440;
             }
+            // Simpan rentang jam ASLI hanya untuk shift yang benar-benar diprorata.
+            // Shift penuh tetap digabung berdasarkan jenis/durasi seperti sebelumnya.
+            $isPartial = $minutes + 60 < (int)round($standard * 60);
+            $hasTimes = !empty($shift['start_time']) && !empty($shift['end_time']);
+            $keepTimes = $isPartial && $hasTimes;
             $key = $type.'|'.$minutes;
+            if ($keepTimes) {
+                $key .= '|'.$shift['start_time'].'|'.$shift['end_time'];
+            }
             if (!isset($recapTransport[$key])) {
                 $recapTransport[$key] = [
                     'shift_type' => $type, 'qty' => 0,
                     'hours_per_visit' => round($minutes / 60, 8),
-                    'start_time' => null, 'end_time' => null,
+                    'start_time' => $keepTimes ? $shift['start_time'] : null,
+                    'end_time' => $keepTimes ? $shift['end_time'] : null,
                 ];
             }
             $recapTransport[$key]['qty']++;

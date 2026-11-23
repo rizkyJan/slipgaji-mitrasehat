@@ -119,21 +119,7 @@ class DoctorPayslipPdf {
   $cashTotal=(int)($s['cash_total']??0);
   if($cashTotal>0)$line('Diterima Cash',$cashTotal);
   $line('Transfer',(int)$s['transfer_due'],true);
-  // Rincian cash hanya jika benar-benar ada cash diterima (maksimal 3 entri di halaman utama).
-  $cashRows=$cashTotal>0?(array)($s['cash']??[]):[];
-  $shownCash=min(3,count($cashRows));
-  if($shownCash>0){
-   if($y<265){$pdf->newPage();$y=785;}
-   $pdf->rgb(.08,.27,.65);$pdf->text(55,$y,'RINCIAN CASH',9,true);$y-=20;
-   for($i=0;$i<$shownCash;$i++){
-    $c=$cashRows[$i];
-    $label=($c['date']??'-').' - '.substr((string)($c['note']??'Cash'),0,30);
-    $line($label,(int)$c['amount']);
-   }
-   if(count($cashRows)>$shownCash){
-    $pdf->rgb(.4,.44,.5);$pdf->text(55,$y,'+'.(count($cashRows)-$shownCash).' catatan cash lainnya ada di lampiran',8);$y-=17;
-   }
-  }
+  // Riwayat cash tetap disimpan sebagai data internal; PDF hanya menampilkan total cash dan transfer.
   $pdf->rgb(.17,.20,.18);
   foreach(explode("\n",wordwrap(Terbilang::rupiah((int)$s['net_total']),92,"\n",false)) as $phrase){
    $pdf->text(48,$y,'Terbilang: '.$phrase,8);$y-=13;
@@ -168,7 +154,13 @@ class DoctorPayslipPdf {
     $type=(string)($tr['type']??'-');
     $label=(string)($labels[$type]??$type);
     $per=(int)($tr['per_visit']??0);
-    if(($tr['mode']??'full')!=='full')$label.=' ('.$numShort($tr['hours_per_visit']??0).' jam)';
+    if(($tr['mode']??'full')!=='full'){
+     $startTime=(string)($tr['start_time']??'');$endTime=(string)($tr['end_time']??'');
+     // Hanya tampilkan jam asli yang tersimpan; jangan membuat waktu fiktif dari durasi.
+     if(preg_match('/^\d{2}:\d{2}$/',$startTime) && preg_match('/^\d{2}:\d{2}$/',$endTime)){
+      $label.=' ('.$startTime.' - '.$endTime.')';
+     }else{$label.=' ('.$numShort($tr['hours_per_visit']??0).' jam)';}
+    }
     $key=$label.'|'.$per;
     if(!isset($transportGrouped[$key]))$transportGrouped[$key]=['label'=>$label,'count'=>0,'per'=>$per,'amount'=>0];
     $transportGrouped[$key]['count']+=$qty;
@@ -180,7 +172,10 @@ class DoctorPayslipPdf {
     $label=(string)($labels[$type]??$type);
     $std=(float)($shift['standard_hours']??0);$worked=(float)($shift['hours']??0);
     if($std>0 && $worked+0.00001<$std && ($shift['transport_mode']??'')!=='full'){
-     $label.=' ('.$numShort($worked).' jam)';
+     $startTime=(string)($shift['start_time']??'');$endTime=(string)($shift['end_time']??'');
+     if(preg_match('/^\d{2}:\d{2}$/',$startTime) && preg_match('/^\d{2}:\d{2}$/',$endTime)){
+      $label.=' ('.$startTime.' - '.$endTime.')';
+     }else{$label.=' ('.$numShort($worked).' jam)';}
     }
     if(($shift['transport_mode']??'')==='manual')$label.=' (koreksi)';
     $per=(int)($shift['transport']??0);
