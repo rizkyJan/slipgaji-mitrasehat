@@ -118,7 +118,10 @@ class DoctorPayrollController extends Controller {
   abort_unless($doctorPayroll->status==='draft',403);$d=$this->fields($request);
   abort_unless((int)$d['doctor_assignment_id']===(int)$doctorPayroll->doctor_assignment_id && $d['period']===$doctorPayroll->period,422);
   $c=$calc->calculate($doctorPayroll->assignment()->with('employee')->firstOrFail(),$d['period'],$d);
-  $doctorPayroll->update(['input_snapshot'=>$c['input'],'calculation_snapshot'=>$c,'gross_total'=>$c['gross_total'],'deduction_total'=>$c['deduction_total'],'net_total'=>$c['net_total'],'cash_total'=>$c['cash_total'],'transfer_due'=>$c['transfer_due'],'notes'=>$d['notes']??null]);
+  if (\Illuminate\Support\Facades\Schema::hasTable('doctor_fee_days') && (int)\App\Models\DoctorFeeDay::where('doctor_payroll_id',$doctorPayroll->id)->where('confirmed',true)->sum('fee_amount') > (int)$c['gross_total']) {
+    throw \Illuminate\Validation\ValidationException::withMessages(['period'=>'Nominal draft baru lebih kecil daripada total fee harian yang sudah diverifikasi. Koreksi rekonsiliasi lebih dahulu.']);
+   }
+   $doctorPayroll->update(['input_snapshot'=>$c['input'],'calculation_snapshot'=>$c,'gross_total'=>$c['gross_total'],'deduction_total'=>$c['deduction_total'],'net_total'=>$c['net_total'],'cash_total'=>$c['cash_total'],'transfer_due'=>$c['transfer_due'],'notes'=>$d['notes']??null]);
   AuditLog::record('doctor.payroll.updated',$doctorPayroll);return redirect()->route('doctors.show',$doctorPayroll)->with('success','Draft berhasil diperbarui.');
  }
  public function show(DoctorPayroll $doctorPayroll,DoctorSlipVerification $v){
@@ -134,7 +137,8 @@ class DoctorPayrollController extends Controller {
   });
   AuditLog::record('doctor.payroll.approved',$doctorPayroll);return redirect()->route('doctors.show',$doctorPayroll)->with('success','Slip dokter disetujui dan terkunci.');
  }
- public function destroy(DoctorPayroll $doctorPayroll){abort_unless($doctorPayroll->status==='draft',403);AuditLog::record('doctor.payroll.deleted',$doctorPayroll);$doctorPayroll->delete();return redirect()->route('doctors.index')->with('success','Draft dihapus.');}
+ public function destroy(DoctorPayroll $doctorPayroll){abort_unless($doctorPayroll->status==='draft',403);if (\Illuminate\Support\Facades\Schema::hasTable('doctor_fee_days') && \App\Models\DoctorFeeDay::where('doctor_payroll_id',$doctorPayroll->id)->exists()) return back()->with('error','Draft masih mempunyai rincian fee harian. Tidak boleh dihapus karena dapat menghilangkan riwayat pembayaran.');
+   AuditLog::record('doctor.payroll.deleted',$doctorPayroll);$doctorPayroll->delete();return redirect()->route('doctors.index')->with('success','Draft dihapus.');}
  public function pdf(DoctorPayroll $doctorPayroll,DoctorPayslipPdf $pdf){$bin=$pdf->render($doctorPayroll->load('assignment.employee'));
   return response($bin,200,['Content-Type'=>'application/pdf','Content-Disposition'=>'inline; filename="slip-dokter-'.str_replace('/','-',(string)$doctorPayroll->slip_number).'-'.$doctorPayroll->id.'.pdf"','Cache-Control'=>'private, no-store']);}
  public function send(DoctorPayroll $doctorPayroll,DoctorPayslipPdf $pdf,GmailService $gmail,DoctorSlipVerification $v){

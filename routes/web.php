@@ -50,6 +50,16 @@ Route::middleware(['auth', \App\Http\Middleware\NoStoreSensitiveContent::class])
     Route::get('/doctor-imports/{batch}', [\App\Http\Controllers\DoctorExcelImportController::class, 'review'])->name('doctors.import.review');
     Route::post('/doctor-imports/{batch}/generate', [\App\Http\Controllers\DoctorExcelImportController::class, 'generate'])->name('doctors.import.generate');
     Route::get('/doctor-payrolls', [DoctorPayrollController::class, 'index'])->name('doctors.index');
+
+    // R4.23: rekonsiliasi fee tanggal, terpisah dari snapshot slip dokter.
+    Route::get('/doctor-fees', [\App\Http\Controllers\DoctorFeeController::class, 'index'])->name('doctors.fees.index');
+    Route::get('/doctor-payrolls/{doctorPayroll}/fees', [\App\Http\Controllers\DoctorFeeController::class, 'show'])->name('doctors.fees.show');
+    Route::get('/doctor-payrolls/{doctorPayroll}/fees/pdf', [\App\Http\Controllers\DoctorFeeController::class, 'pdf'])->name('doctors.fees.pdf');
+    Route::post('/doctor-payrolls/{doctorPayroll}/fees/days', [\App\Http\Controllers\DoctorFeeController::class, 'addDay'])->middleware('can:manage-settings')->name('doctors.fees.add');
+    Route::post('/doctor-payrolls/{doctorPayroll}/fees/import-dates', [\App\Http\Controllers\DoctorFeeController::class, 'importDates'])->middleware('can:manage-settings')->name('doctors.fees.import');
+    Route::post('/doctor-payrolls/{doctorPayroll}/fees/days/{day}', [\App\Http\Controllers\DoctorFeeController::class, 'saveDay'])->middleware('can:manage-settings')->name('doctors.fees.save');
+    Route::post('/doctor-payrolls/{doctorPayroll}/fees/days/{day}/payments', [\App\Http\Controllers\DoctorFeeController::class, 'payment'])->middleware('can:manage-settings')->name('doctors.fees.payment');
+    Route::post('/doctor-payrolls/{doctorPayroll}/fees/days/{day}/payments/{payment}/void', [\App\Http\Controllers\DoctorFeeController::class, 'voidPayment'])->middleware('can:manage-settings')->name('doctors.fees.void');
     Route::get('/doctor-payrolls/create', [DoctorPayrollController::class, 'create'])->name('doctors.create');
     Route::post('/doctor-payrolls/preview', [DoctorPayrollController::class, 'preview'])->name('doctors.preview');
     Route::post('/doctor-payrolls', [DoctorPayrollController::class, 'store'])->name('doctors.store');

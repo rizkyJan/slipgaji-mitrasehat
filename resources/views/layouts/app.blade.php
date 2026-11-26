@@ -16,7 +16,8 @@
         <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><span class="nav-icon">◫</span> Dashboard</a>
         <a class="nav-link {{ request()->routeIs('employees.*') ? 'active' : '' }}" href="{{ route('employees.index') }}"><span class="nav-icon">♙</span> Data Karyawan</a>
         <a class="nav-link {{ request()->routeIs('payrolls.*') ? 'active' : '' }}" href="{{ route('payrolls.index') }}"><span class="nav-icon">▤</span> Penggajian</a>
-        <a class="nav-link {{ request()->routeIs('doctors.*') ? 'active' : '' }}" href="{{ route('doctors.index') }}"><span class="nav-icon">⚕</span> Honor Dokter</a>
+        <a class="nav-link {{ (request()->routeIs('doctors.*') && !request()->routeIs('doctors.fees.*')) ? 'active' : '' }}" href="{{ route('doctors.index') }}"><span class="nav-icon">⚕</span> Honor Dokter</a>
+        <a class="nav-link {{ request()->routeIs('doctors.fees.*') ? 'active' : '' }}" href="{{ route('doctors.fees.index') }}"><span class="nav-icon">▤</span> Rincian Fee Harian</a>
         <a class="nav-link {{ request()->routeIs('doctors.import.*') ? 'active' : '' }}" href="{{ route('doctors.import.index') }}"><span class="nav-icon">⇪</span> Import Excel Dokter</a>
         <a class="nav-link {{ request()->routeIs('deliveries.*') ? 'active' : '' }}" href="{{ route('deliveries.index') }}"><span class="nav-icon">✉</span> Pengiriman Email</a>
         <a class="nav-link {{ request()->routeIs('reports.*') && !request()->routeIs('reports.audit') ? 'active' : '' }}" href="{{ route('reports.index') }}"><span class="nav-icon">▥</span> Laporan & Riwayat</a>
