@@ -255,9 +255,19 @@ function addCash(row={}){
  field(n('note'),'Catatan (opsional)','text',row.note||'','maxlength="150"'),'Pengambilan Cash #'+(i+1)));
 }
 (root.querySelectorAll('input')||[]).forEach(el=>{});
-(init.shifts||[]).forEach(addShift);(init.actions||[]).forEach(addAction);(init.extras||[]).forEach(addExtra);(init.cash||[]).forEach(addCash);
+
+// R4.22: Laravel dapat mengirim array dengan indeks berlubang sebagai objek JSON.
+// Ubah objek bernomor indeks menjadi daftar untuk RENDER FORM SAJA.
+function rowsFromSnapshot(value, label){
+ if(value===null || value===undefined) return [];
+ if(Array.isArray(value)) return value;
+ if(typeof value==='object') return Object.values(value);
+ throw new Error('Format data '+label+' tidak sesuai. Jangan simpan draft.');
+}
+rowsFromSnapshot(init.shifts,'shifts').forEach(addShift);rowsFromSnapshot(init.actions,'actions').forEach(addAction);rowsFromSnapshot(init.extras,'extras').forEach(addExtra);rowsFromSnapshot(init.cash,'cash').forEach(addCash);
 recapPatients();
-if((init.recap_transport||[]).length)(init.recap_transport||[]).forEach(recapTransport);
+const transportRows=rowsFromSnapshot(init.recap_transport,'recap_transport');
+if(transportRows.length)transportRows.forEach(recapTransport);
 else Object.keys(shiftsLabels).filter(t=>Number(shiftRates[t]||0)>0).forEach(t=>recapTransport({shift_type:t,qty:0}));
 root.querySelectorAll('input[name="input_mode"]').forEach(el=>el.addEventListener('change',updateMode));
 document.getElementById('add-recap-transport').onclick=()=>{recapTransport();preview();};
