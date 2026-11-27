@@ -32,6 +32,11 @@ Route::middleware(['auth', \App\Http\Middleware\NoStoreSensitiveContent::class])
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
     Route::resource('employees', EmployeeController::class)->except('show');
+    // R4.29 - informational work-period dates only (doctor + employee).
+    Route::get('/work-periods', [\App\Http\Controllers\WorkPeriodController::class, 'index'])->middleware('can:manage-settings')->name('work-periods.index');
+    Route::post('/work-periods', [\App\Http\Controllers\WorkPeriodController::class, 'bulk'])->middleware(['can:manage-settings', 'throttle:10,1'])->name('work-periods.bulk');
+    Route::post('/doctor-payrolls/{doctorPayroll}/work-period', [\App\Http\Controllers\WorkPeriodController::class, 'doctor'])->middleware(['can:manage-settings', 'throttle:10,1'])->name('work-periods.doctor');
+    Route::post('/payrolls/{payroll}/work-period', [\App\Http\Controllers\WorkPeriodController::class, 'employee'])->middleware(['can:manage-settings', 'throttle:10,1'])->name('work-periods.employee');
     Route::get('/payrolls', [PayrollController::class,'index'])->name('payrolls.index');
     Route::get('/payrolls/create', [PayrollController::class,'create'])->name('payrolls.create');
     Route::post('/payrolls/preview', [PayrollController::class,'preview'])->name('payrolls.preview');

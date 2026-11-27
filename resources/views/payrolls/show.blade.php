@@ -3,6 +3,7 @@
 @section('content')
 @php $c=$payroll->calculation_snapshot; $approved=$payroll->status==='approved'; @endphp
 <div class="page-head"><div><p class="eyebrow">SLIP GAJI / {{ $payroll->period }}</p><h1 class="page-title">{{ $payroll->employee->name }}</h1><p class="page-sub">NIP: {{ $payroll->employee->employee_code }} · Unit: {{ ($c['employee']['branch'] ?? $payroll->employee->branch) ?: '-' }} · {{ $payroll->employee->position ?: '-' }} · {{ $payroll->period }}</p></div><div class="actions"><a href="{{ route('payrolls.index',['period'=>$payroll->period]) }}" class="btn btn-secondary">← Kembali</a><a href="{{ route('payrolls.pdf',$payroll) }}" class="btn btn-secondary" target="_blank" rel="noopener">▣ Lihat / Cetak PDF</a>@if(!$approved)<a href="{{ route('payrolls.edit',$payroll) }}" class="btn btn-primary">✎ Edit Draft</a>@endif</div></div>
+@include('work_periods.detail_editor', ['kind' => 'employee'])
 @if(!$approved)<div class="alert alert-warning">Slip ini masih <strong>Draft</strong>. Periksa nominal dan dasar BPJS. Hanya administrator yang dapat menyetujui slip. PDF draft belum sah dan tidak dapat dikirim ke karyawan.</div>@else<div class="alert alert-success">✓ Slip telah disetujui {{ $payroll->approved_at?->locale('id')->translatedFormat('d F Y H:i') }} oleh {{ $payroll->approver?->name ?: 'Administrator' }}. Data penggajian terkunci.</div>@endif
 @if($approved && $payroll->slip_number && $payroll->verification_token)
 <div class="alert alert-success"><strong>Nomor Slip Resmi: {{ $payroll->slip_number }}</strong><br>

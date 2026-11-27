@@ -21,9 +21,9 @@ class PayslipPdf
         $e = $c['employee'];
         $period = Carbon::createFromFormat('!Y-m', $payroll->period)->locale('id')->translatedFormat('F Y');
         // R4.15 - hanya INFORMASI periode kerja di PDF, tanpa mengubah kalkulasi gaji.
-        $baseMonth = Carbon::createFromFormat('!Y-m', (string) $payroll->period);
-        $workFrom = $baseMonth->copy()->subMonthNoOverflow()->day(26);
-        $workUntil = $baseMonth->copy()->day(25);
+        [$_workStart, $_workEnd] = \App\Services\PayrollWorkPeriod::forEmployee($payroll);
+        $workFrom = Carbon::parse($_workStart);
+        $workUntil = Carbon::parse($_workEnd);
         $workRange = $workFrom->locale('id')->translatedFormat('d F Y')
             .' - '.$workUntil->locale('id')->translatedFormat('d F Y');
         $clinic = $setting('clinic_name', 'PT. MITRA SEHAT MAJU SENTOSA');

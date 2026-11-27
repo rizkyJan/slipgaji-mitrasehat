@@ -21,6 +21,7 @@
 @if(!$p->deliveries->contains('status','sent'))<form method="post" action="{{ route('doctors.send',$p) }}" onsubmit="return confirm('Kirim PDF honor dokter ke {{ $doctor?->email }}?')">@csrf<button class="btn btn-primary">Kirim via Gmail ke {{ $doctor?->email }}</button></form>@else<span class="tag tag-green">Sudah terkirim via Gmail</span>@endif
 @endif</div></div>
 <div class="kpis"><div class="kpi"><small>Total Penerimaan</small><b style="font-size:21px">Rp{{ number_format($p->gross_total,0,',','.') }}</b></div><div class="kpi"><small>Potongan</small><b style="font-size:21px">Rp{{ number_format($p->deduction_total,0,',','.') }}</b></div><div class="kpi"><small>Sudah Cash</small><b style="font-size:21px">Rp{{ number_format($p->cash_total,0,',','.') }}</b></div><div class="kpi"><small>Transfer</small><b style="font-size:21px">Rp{{ number_format($p->transfer_due,0,',','.') }}</b></div></div>
+@include('work_periods.detail_editor', ['kind' => 'doctor'])
 @include('doctors.transfer_breakdown')
 @if(count($s['warnings']??[]))<div class="alert alert-error">{{ implode(' ',$s['warnings']) }}</div>@endif
 <div class="card" style="margin:18px 0"><div class="card-head"><h3>Rincian Hak Dokter</h3></div><div class="table-wrap"><table><thead><tr><th>Komponen</th><th class="money">Nominal</th></tr></thead><tbody>

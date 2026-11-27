@@ -258,7 +258,7 @@ class DoctorPayslipPdf {
 
   // Tanggal rentang kerja mengikuti aturan periode R4.7 (26 bulan lalu s.d. 25 bulan ini).
   // Hari gajian hanya informasi jadwal, BUKAN bukti transfer.
-  [$workStart,$workEnd]=DoctorPayrollPeriod::bounds((string)$p->period);
+  [$workStart,$workEnd]=\App\Services\PayrollWorkPeriod::forDoctor($p);
   $formatDate=static fn(string $date):string=>Carbon::parse($date)->locale('id')->translatedFormat('d F Y');
   $workRange=$formatDate($workStart).' - '.$formatDate($workEnd);
   $payPeriod=Carbon::createFromFormat('!Y-m',(string)$p->period);
