@@ -6,7 +6,6 @@
 <div class="card" style="margin-bottom:18px"><div class="card-pad" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
 <span class="tag {{ $p->status==='approved'?'tag-green':'tag-amber' }}">{{ $p->status==='approved'?'Disetujui & Dikunci':'Draft' }}</span>
 <a class="btn btn-outline" href="{{ route('doctors.pdf',$p) }}" target="_blank">Lihat PDF</a>
-        <a class="btn btn-secondary" href="{{ route('doctors.fees.show',$p) }}">Rincian Fee Harian</a>
 @if($p->status==='draft')<a class="btn btn-primary" href="{{ route('doctors.edit',$p) }}">Edit Draft</a>
 @can('approve-payroll')<form method="post" action="{{ route('doctors.approve',$p) }}" onsubmit="return confirm('Setujui dan kunci honor dokter ini?')">@csrf<button class="btn btn-primary">Setujui & Terbitkan</button></form>@endcan
 <form method="post" action="{{ route('doctors.delete',$p) }}" onsubmit="return confirm('Hapus draft dokter ini?')">@csrf @method('DELETE')<button class="btn btn-outline">Hapus Draft</button></form>

@@ -318,6 +318,38 @@ class DoctorPayslipPdf {
     $lineRow($entry['label'],$entry['count']>0?$entry['count'].'x':'',$entry['rate'],$moneyShort($entry['amount']));
    }
   }
+   // R4.25: riwayat cash dibaca dari snapshot slip, bukan dari tabel rekonsiliasi
+   // fee harian. Tanggal yang dicetak adalah tanggal uang diterima, bukan tanggal
+   // praktik. Sisa transfer tetap saldo rencana, bukan bukti transfer dilakukan.
+   if($cashTotal>0){
+    $cashRows=(array)($s['cash']??($p->input_snapshot['cash']??[]));
+    $cashEntries=[];$cashRowsSum=0;
+    foreach($cashRows as $entry){
+     if(!is_array($entry))continue;
+     $amount=(int)($entry['amount']??0);
+     $rawDate=(string)($entry['date']??'');
+     if($amount<=0||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$rawDate))continue;
+     [$yy,$mm,$dd]=array_map('intval',explode('-',$rawDate));
+     if(!checkdate($mm,$dd,$yy))continue;
+     $cashRowsSum+=$amount;
+     $dateText=sprintf('%02d/%02d/%04d',$dd,$mm,$yy);
+     $note=trim(preg_replace('/\s+/u',' ',(string)($entry['note']??''))??'');
+     $label='Cash diterima '.$dateText.($note!==''?' - '.$note:'');
+     $cashEntries[]=['label'=>$label,'amount'=>$amount];
+    }
+    if($cashEntries){
+     $section('RIWAYAT CASH DITERIMA',$cashTotal);
+     foreach($cashEntries as $entry)$lineRow($entry['label'],'','',$moneyShort($entry['amount']));
+     if($cashRowsSum!==$cashTotal){
+      $ensure(19);$pdf->rgb(.68,.25,.14);
+      $pdf->text(55,$y,'PERLU CEK: jumlah rincian cash tidak sama dengan total cash slip.',7.3);$y-=19;
+     }
+     $ensure(42);$pdf->rgb(.26,.36,.51);
+     $pdf->text(55,$y,'Sisa untuk transfer: Rp '.$moneyShort($s['transfer_due']??0).' (belum bukti transfer).',8);$y-=19;
+     $pdf->rgb(.45,.5,.58);
+     $pdf->text(55,$y,'Tanggal di atas adalah tanggal cash diterima, bukan tanggal praktik.',7.2);$y-=19;
+    }
+   }
   // Tidak mengulang total tagihan, hak dokter, cash, atau transfer di lampiran.
   // Rekap pembayaran final cukup terlihat pada halaman utama; lampiran hanya rincian per kelompok.
   $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
