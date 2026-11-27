@@ -26,8 +26,8 @@ class DoctorPayrollController extends Controller {
   $payrolls=$query->with('assignment.employee')->latest()->paginate(20)->withQueryString();
   return view('doctors.index',compact('period','branch','status','branches','stats','payrolls'));
  }
- private function mergeOld(array $base):array { $old=old(); foreach(['base_salary','sip_fee','pj_fee','absence_days','input_mode','recap_transport','recap_counts','shifts','actions','extras','cash','notes'] as $key) if(array_key_exists($key,$old))$base[$key]=$old[$key]; return $base; }
- private function baseInput(DoctorAssignment $a):array {return ['base_salary'=>$a->base_salary,'sip_fee'=>$a->sip_fee,'pj_fee'=>$a->pj_fee,'absence_days'=>0,'input_mode'=>'recap','recap_transport'=>[],'recap_counts'=>[],'shifts'=>[],'actions'=>[],'extras'=>[],'cash'=>[],'notes'=>''];}
+ private function mergeOld(array $base):array { $old=old(); foreach(['base_salary','sip_fee','pj_fee','absence_days','input_mode','recap_transport','recap_counts','shifts','actions','extras','cash','mouth_opening_rate','notes'] as $key) if(array_key_exists($key,$old))$base[$key]=$old[$key]; return $base; }
+ private function baseInput(DoctorAssignment $a):array {return ['base_salary'=>$a->base_salary,'sip_fee'=>$a->sip_fee,'pj_fee'=>$a->pj_fee,'absence_days'=>0,'input_mode'=>'recap','recap_transport'=>[],'recap_counts'=>[],'shifts'=>[],'actions'=>[],'extras'=>[],'cash'=>[],'mouth_opening_rate'=>0,'notes'=>''];}
  public function create(Request $request){
   $assignments=DoctorAssignment::with('employee')->where('active',true)->orderBy('branch')->get();
   $assignment=$request->query('assignment')?DoctorAssignment::with('employee')->where('active',true)->findOrFail($request->query('assignment')):null;
@@ -71,6 +71,8 @@ class DoctorPayrollController extends Controller {
    'recap_counts.usg'=>['nullable','integer','between:0,100000'],
    'recap_counts.homecare_clinic'=>['nullable','integer','between:0,100000'],
    'recap_counts.homecare_own'=>['nullable','integer','between:0,100000'],
+    'recap_counts.mouth_opening_count'=>['nullable','integer','between:0,10000'],
+    'mouth_opening_rate'=>['nullable','integer','between:0,1000000'],
    'base_salary'=>['required','integer','min:0','max:9999999999'],'sip_fee'=>['required','integer','min:0','max:9999999999'],'pj_fee'=>['required','integer','min:0','max:9999999999'],'absence_days'=>['required','integer','between:0,31'],
    'shifts'=>['nullable','array','max:150'], 'shifts.*.work_date'=>['required','date_format:Y-m-d'],
    'shifts.*.shift_type'=>['required',Rule::in(array_keys(config('doctor_payroll.shift_labels')))],
@@ -81,6 +83,7 @@ class DoctorPayrollController extends Controller {
    'shifts.*.bpjs_excess'=>['nullable','integer','between:0,1000'],'shifts.*.general_excess'=>['nullable','integer','between:0,1000'],
    'shifts.*.usg_count'=>['required','integer','between:0,1000'],
    'shifts.*.homecare_clinic'=>['required','integer','between:0,1000'],'shifts.*.homecare_own'=>['required','integer','between:0,1000'],
+    'shifts.*.mouth_opening_count'=>['nullable','integer','between:0,1000'],
    'actions'=>['nullable','array','max:150'],'actions.*.work_date'=>['nullable','date_format:Y-m-d'],'actions.*.procedure_id'=>['required','integer','exists:doctor_procedures,id'],
    'actions.*.qty'=>['required','integer','between:1,1000'],'actions.*.fixed_fee'=>['nullable','integer','min:0','max:999999999'],
    'actions.*.percentage'=>['nullable','numeric','between:0,100'],'actions.*.price'=>['required','integer','min:0','max:999999999'],

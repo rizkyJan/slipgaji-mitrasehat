@@ -128,6 +128,19 @@ class DoctorPayrollCalculator {
    $shiftDetails[]=['date'=>$date,'type'=>$type,'hours'=>round($worked,3),'standard_hours'=>$standard,'start_time'=>$r['start_time']??null,'end_time'=>$r['end_time']??null,'full_rate'=>$rate,'transport_mode'=>$modeTransport,'hourly_rate'=>round($hourly>0?$hourly:$rate/$standard,2),'transport'=>$transport,'bpjs'=>$bpjs,'general'=>$umum,'bpjs_paid'=>$overBpjs,'general_paid'=>$overUmum,'patient_mode_applied'=>$appliedMode,'patient_quota'=>$quota,'patients_included'=>($appliedMode==='excess'?min($bpjs+$umum,$quota):0),'usg'=>$this->nonnegative($r['usg_count']??0),'homecare_clinic'=>$homeClinic,'homecare_own'=>$homeOwn,'patient_fee'=>$bfee+$ufee,'usg_fee'=>$usg,'homecare_fee'=>$home,'total'=>$transport+$bfee+$ufee+$usg+$home];
   }
   foreach(['Uang Transport'=>$totTransport,'Uang Pasien BPJS'=>$bpjsFee,'Uang Pasien Umum'=>$umumFee,'Uang Pasien USG'=>$usgFee,'Fee Homecare'=>$homecareFee] as $k=>$v)if($v>0)$income[$k]=$v;
+   // R4.24: biaya buka mulut khusus dokter gigi di Darasan. Tidak diambil otomatis
+   // dari jumlah BPJS/umum karena belum tentu setiap kunjungan memenuhi syarat.
+   $mouthEnabled=DoctorMouthOpening::applies($assignment);
+   $mouthRate=$this->nonnegative($data['mouth_opening_rate']??0);
+   $mouthCount=$inputMode==='recap'
+    ?$this->nonnegative($data['recap_counts']['mouth_opening_count']??0)
+    :array_sum(array_map(fn($r)=>$this->nonnegative($r['mouth_opening_count']??0),$data['shifts']??[]));
+   if(!$mouthEnabled && ($mouthRate>0 || $mouthCount>0))
+    throw ValidationException::withMessages(['mouth_opening_rate'=>'Uang buka mulut hanya tersedia untuk dokter gigi cabang Darasan.']);
+   if($mouthEnabled && $mouthCount>0 && $mouthRate===0)
+    throw ValidationException::withMessages(['mouth_opening_rate'=>'Isi tarif per pasien buka mulut sebelum menyimpan.']);
+   $mouthTotal=$mouthCount*$mouthRate;
+   if($mouthEnabled && $mouthTotal>0)$income['Uang Buka Mulut']=$mouthTotal;
   $actionTotal=0;
   foreach(($data['actions']??[]) as $ix=>$a){
    $actionDate=trim((string)($a['work_date']??''));
@@ -164,6 +177,7 @@ class DoctorPayrollCalculator {
   if($net<0)$warning[]='Potongan lebih besar daripada penerimaan dokter.';
   return ['doctor'=>['name'=>$assignment->employee?->name,'nip'=>$assignment->employee?->employee_code,'email'=>$assignment->employee?->email,'branch'=>$assignment->branch,'profile'=>$assignment->profile_label],
    'period'=>$period,'rules'=>$rules,'input_mode'=>$inputMode,'recap'=>$recapDetails,'income'=>$income,'deductions'=>$deductions,'shifts'=>$shiftDetails,'actions'=>$actionDetails,'extras'=>$extraDetails,'cash'=>$cashDetails,
-   'gross_total'=>$gross,'deduction_total'=>$cuts,'net_total'=>$net,'cash_total'=>$cash,'transfer_due'=>$net-$cash,'warnings'=>$warning,'input'=>$data];
+   'mouth_opening'=>['count'=>$mouthEnabled?$mouthCount:0,'rate'=>$mouthEnabled?$mouthRate:0,'total'=>$mouthEnabled?$mouthTotal:0],
+    'gross_total'=>$gross,'deduction_total'=>$cuts,'net_total'=>$net,'cash_total'=>$cash,'transfer_due'=>$net-$cash,'warnings'=>$warning,'input'=>$data];
  }
 }

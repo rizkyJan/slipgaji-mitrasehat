@@ -87,7 +87,7 @@ class DoctorPayslipPdf {
   if($usgVisits>0 && !array_key_exists('Uang Pasien USG',$summaryIncome))$summaryIncome['Uang Pasien USG']=0;
   if($homeVisits>0 && !array_key_exists('Fee Homecare',$summaryIncome))$summaryIncome['Fee Homecare']=0;
   if($actionRows && !array_key_exists('Fee Tindakan',$summaryIncome))$summaryIncome['Fee Tindakan']=0;
-  $order=['Gaji Pokok','Fee SIP','Fee PJ','Uang Transport','Uang Pasien BPJS','Uang Pasien Umum','Uang Pasien USG','Fee Homecare','Fee Tindakan'];
+  $order=['Gaji Pokok','Fee SIP','Fee PJ','Uang Transport','Uang Pasien BPJS','Uang Pasien Umum','Uang Pasien USG','Fee Homecare','Uang Buka Mulut','Fee Tindakan'];
   $orderedIncome=[];
   foreach($order as $name){if(array_key_exists($name,$summaryIncome)){$orderedIncome[$name]=$summaryIncome[$name];unset($summaryIncome[$name]);}}
   $orderedIncome+=$summaryIncome;
@@ -219,7 +219,13 @@ class DoctorPayslipPdf {
    $add('PASIEN / LAYANAN',$label,$qty,$moneyShort($rate),$qty*$rate);
   }
 
-  // Tindakan: 1 baris untuk jenis/tarif yang sama, tanpa uraian rumus panjang.
+   // R4.24: rincian buka mulut dari snapshot yang sudah dihitung saat draft disimpan.
+   // Slip lama tidak memiliki key ini, jadi tidak berubah.
+   $mouth=(array)($s['mouth_opening']??[]);
+   if((int)($mouth['count']??0)>0){
+    $add('PASIEN / LAYANAN','Buka mulut',(int)$mouth['count'],$moneyShort($mouth['rate']??0),(int)($mouth['total']??0));
+   }
+   // Tindakan: 1 baris untuk jenis/tarif yang sama, tanpa uraian rumus panjang.
   $actionGroups=[];
   foreach($actionRows as $action){
    $qty=(int)($action['qty']??0);if($qty<=0)continue;

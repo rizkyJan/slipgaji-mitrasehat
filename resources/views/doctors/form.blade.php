@@ -22,6 +22,7 @@ $procOptions=$procedures->map(fn($p)=>['id'=>$p->id,'label'=>$p->label,'mode'=>$
 $editing=isset($doctorPayroll);
 $chosenMode=old('input_mode',$input['input_mode']??(!empty($input['shifts'])?'daily':'recap'));
 $rateConfig=$assignment?->rules??[];
+$mouthOpeningAllowed=\App\Services\DoctorMouthOpening::applies($assignment);
 $save=$editing?route('doctors.update',$doctorPayroll):route('doctors.store');
 // Tanggal bawaan sekarang dari pengaturan bersama semua payroll.
 // Tanggal tersimpan pada slip dokter tetap dipertahankan sebagai override per slip.
@@ -55,6 +56,10 @@ $defaultPayDate=\App\Services\PayrollPayday::forPeriod((string)$period);
 <label><input type="radio" name="input_mode" value="recap" @checked($chosenMode==='recap')>Rekap Bulanan (× Jumlah)</label>
 <label><input type="radio" name="input_mode" value="daily" @checked($chosenMode==='daily')>Detail Harian</label></div>
 <p class="dr-help" style="margin-top:12px">Pilih salah satu mode. Input mode lain tidak akan dihitung supaya tidak terjadi gaji ganda.</p></div></div>
+@if($mouthOpeningAllowed)
+<div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>Uang Buka Mulut — Dokter Gigi Darasan</h3><p class="card-sub">Jumlah pasien dikalikan tarif buka mulut per pasien. Tidak otomatis mengikuti jumlah BPJS atau umum.</p></div></div>
+<div class="card-pad"><div class="field" style="max-width:260px"><label>Tarif buka mulut per pasien (Rp)</label><input class="input" type="number" name="mouth_opening_rate" min="0" max="1000000" value="{{ old('mouth_opening_rate',$input['mouth_opening_rate']??0) }}" required></div><p class="dr-help" style="margin-top:10px">Isi jumlah pasien pada bagian Pasien & Layanan (Rekap Bulanan) atau tiap Kedatangan (Detail Harian). Jika jumlah pasien lebih dari nol, tarif wajib diisi. Cek agar tidak dihitung lagi sebagai Tambahan/Tindakan.</p></div></div>
+@endif
 <section id="dr-monthly-mode" class="dr-mode-block">
 <div class="card" style="margin-bottom:16px"><div class="card-head"><div><h3>2. Uang Transport — Berapa Kali Hadir?</h3><p class="card-sub">Contoh: Hari biasa Rp70.000 × 5 kali. Untuk jam parsial, buka 'Jam khusus' pada baris itu.</p></div></div>
 <div class="card-pad">@if(!empty($recoveredImportTimes))
@@ -103,6 +108,7 @@ const defaultHours=Number(@json($rateConfig['full_hours']??5));
 const hourlyOverride=Number(@json($rateConfig['hourly_override']??0));
 const patientMode=@json($rateConfig['patient_mode']??'all');
 const patientRates={bpjs:Number(@json($rateConfig['bpjs_fee']??0)),general:Number(@json($rateConfig['general_fee']??0)),usg:Number(@json($rateConfig['usg_fee']??0)),homeclinic:Number(@json($rateConfig['homecare_clinic']??0)),homeown:Number(@json($rateConfig['homecare_own']??0))};
+const mouthOpeningAllowed=@json($mouthOpeningAllowed);
 const poliQuota=@json($assignment->rules['poli2_included']??20);
 const period=@json($period);
 const money=n=>'Rp'+Number(n||0).toLocaleString('id-ID');
@@ -115,8 +121,9 @@ const recapLabels=[
  ['poli2_umum_paid','Pasien Umum Poli 2 setelah kuota',patientRates.general],
  ['usg','Pasien USG',patientRates.usg],
  ['homecare_clinic','Homecare motor klinik',patientRates.homeclinic],
- ['homecare_own','Homecare motor sendiri',patientRates.homeown],
-];
+  ['homecare_own','Homecare motor sendiri',patientRates.homeown],
+ ];
+ if(mouthOpeningAllowed)recapLabels.push(['mouth_opening_count','Pasien buka mulut',Number(init.mouth_opening_rate??0)]);
 function recapTransport(row={}){
  const i=counts.recap_transport++, key=x=>`recap_transport[${i}][${x}]`;
  const type=row.shift_type||'biasa', num=row.qty??0;
@@ -140,7 +147,7 @@ function recapTransport(row={}){
 }
 function recapPatients(){
  const c=init.recap_counts||{};const div=document.getElementById('dr-recap-counts');
- div.innerHTML=recapLabels.filter(([key,label,price])=>price>0||Number(c[key]??0)>0).map(([key,label,price])=>`<div class="dr-recap-row dr-patient-item" data-rate="${esc(price)}" data-poli="${key.startsWith('poli2_')?'1':'0'}"><div><b>${esc(label)}</b><small>${money(price)} per pasien/kali</small></div><div class="field"><label>Jumlah (×)</label><input class="input" type="number" min="0" max="100000" name="recap_counts[${key}]" value="${esc(c[key]??0)}" required></div><div class="dr-recap-value"><b data-subtotal>Rp0</b></div></div>`).join('');
+ div.innerHTML=recapLabels.filter(([key,label,price])=>price>0||Number(c[key]??0)>0||(mouthOpeningAllowed&&key==='mouth_opening_count')).map(([key,label,price])=>`<div class="dr-recap-row dr-patient-item" data-rate="${esc(price)}" data-poli="${key.startsWith('poli2_')?'1':'0'}"><div><b>${esc(label)}</b><small>${money(price)} per pasien/kali</small></div><div class="field"><label>Jumlah (×)</label><input class="input" type="number" min="0" max="100000" name="recap_counts[${key}]" value="${esc(c[key]??0)}" required></div><div class="dr-recap-value"><b data-subtotal>Rp0</b></div></div>`).join('');
  if(!div.children.length)div.innerHTML='<p class="dr-recap-plain">Profil dokter ini belum memiliki tarif pasien/layanan. Atur tarif jika diperlukan.</p>';
  div.querySelectorAll('input').forEach(el=>el.addEventListener('input',updateRecapTotals));updateRecapTotals();
 }
@@ -166,8 +173,10 @@ function updateRecapTotals(){
   if(item.dataset.poli==='1'){
    const visible=poliExists||qty>0;item.style.display=visible?'':'none';item.querySelector('input').disabled=!visible || root.querySelector('input[name="input_mode"]:checked')?.value!=='recap';
   }
-  const rate=Number(item.dataset.rate||0);
-  const realRate=patientMode==='none'&&['bpjs_regular','umum_regular','poli2_bpjs_paid','poli2_umum_paid'].some(k=>item.querySelector('input').name.includes(k))?0:rate;
+   const mouthRow=item.querySelector('input[name="recap_counts[mouth_opening_count]"]');
+   const rate=mouthRow?Number(root.querySelector('input[name="mouth_opening_rate"]')?.value||0):Number(item.dataset.rate||0);
+   if(mouthRow)item.querySelector('small').textContent=money(rate)+' per pasien/kali';
+   const realRate=patientMode==='none'&&['bpjs_regular','umum_regular','poli2_bpjs_paid','poli2_umum_paid'].some(k=>item.querySelector('input').name.includes(k))?0:rate;
   item.querySelector('[data-subtotal]').textContent=money(qty*realRate);
  });
 }
@@ -199,7 +208,8 @@ function addShift(row={}){
  field(n('general_excess'),'Umum setelah kuota Poli 2','number',row.general_excess??'','min="0" placeholder="Isi jika campuran"')+
  field(n('usg_count'),'Pasien USG','number',row.usg_count??0,'min="0" required')+
  field(n('homecare_clinic'),'Homecare motor klinik','number',row.homecare_clinic??0,'min="0" required')+
- field(n('homecare_own'),'Homecare motor sendiri','number',row.homecare_own??0,'min="0" required');
+ field(n('homecare_own'),'Homecare motor sendiri','number',row.homecare_own??0,'min="0" required')+
+  (mouthOpeningAllowed?field(n('mouth_opening_count'),'Pasien buka mulut','number',row.mouth_opening_count??0,'min="0" max="1000" required'):'');
  const container=document.getElementById('doctor-shifts');
  container.insertAdjacentHTML('beforeend',wrap(html,'Kedatangan / Shift #'+(i+1),true));
  const item=container.lastElementChild;
@@ -266,6 +276,7 @@ function rowsFromSnapshot(value, label){
 }
 rowsFromSnapshot(init.shifts,'shifts').forEach(addShift);rowsFromSnapshot(init.actions,'actions').forEach(addAction);rowsFromSnapshot(init.extras,'extras').forEach(addExtra);rowsFromSnapshot(init.cash,'cash').forEach(addCash);
 recapPatients();
+root.querySelector('input[name="mouth_opening_rate"]')?.addEventListener('input',updateRecapTotals);
 const transportRows=rowsFromSnapshot(init.recap_transport,'recap_transport');
 if(transportRows.length)transportRows.forEach(recapTransport);
 else Object.keys(shiftsLabels).filter(t=>Number(shiftRates[t]||0)>0).forEach(t=>recapTransport({shift_type:t,qty:0}));
