@@ -68,6 +68,8 @@ Route::middleware(['auth', \App\Http\Middleware\NoStoreSensitiveContent::class])
     Route::put('/doctor-payrolls/{doctorPayroll}', [DoctorPayrollController::class, 'update'])->name('doctors.update');
     Route::delete('/doctor-payrolls/{doctorPayroll}', [DoctorPayrollController::class, 'destroy'])->name('doctors.delete');
     Route::get('/doctor-payrolls/{doctorPayroll}/pdf', [DoctorPayrollController::class, 'pdf'])->name('doctors.pdf');
+    // R4.27: input lampiran FEE TIDAK LANGSUNG terpisah dari honor resmi.
+    Route::post('/doctor-payrolls/{doctorPayroll}/transfer-breakdown', [\App\Http\Controllers\DoctorTransferBreakdownController::class, 'save'])->middleware('can:manage-settings')->name('doctors.transfer_breakdown.save');
     Route::post('/doctor-payrolls/{doctorPayroll}/approve', [DoctorPayrollController::class, 'approve'])->middleware('can:approve-payroll')->name('doctors.approve');
     Route::post('/doctor-payrolls/{doctorPayroll}/send', [DoctorPayrollController::class, 'send'])->name('doctors.send');
 

@@ -8,9 +8,9 @@
 <form method="get" action="{{ route('doctors.pdf',$p) }}" target="_blank" style="display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0">
  <label for="r4262-lampiran" style="font-size:13px;font-weight:600">Lampiran PDF</label>
  <select id="r4262-lampiran" name="lampiran" aria-label="Pilihan isi lampiran PDF" style="max-width:260px;border:1px solid #d4e1f5;border-radius:9px;padding:9px;background:white;color:#15345c">
-  <option value="both" selected>Cash + Perkiraan Transfer</option>
-  <option value="cash">Riwayat Cash saja</option>
-  <option value="transfer">Perkiraan Sisa Transfer saja</option>
+  <option value="both" selected>Cash + Transfer</option>
+  <option value="cash">Cash</option>
+  <option value="transfer">Transfer</option>
  </select>
  <button class="btn btn-outline" type="submit">Lihat PDF</button>
 </form>
@@ -20,7 +20,8 @@
 @else
 @if(!$p->deliveries->contains('status','sent'))<form method="post" action="{{ route('doctors.send',$p) }}" onsubmit="return confirm('Kirim PDF honor dokter ke {{ $doctor?->email }}?')">@csrf<button class="btn btn-primary">Kirim via Gmail ke {{ $doctor?->email }}</button></form>@else<span class="tag tag-green">Sudah terkirim via Gmail</span>@endif
 @endif</div></div>
-<div class="kpis"><div class="kpi"><small>Total Penerimaan</small><b style="font-size:21px">Rp{{ number_format($p->gross_total,0,',','.') }}</b></div><div class="kpi"><small>Potongan</small><b style="font-size:21px">Rp{{ number_format($p->deduction_total,0,',','.') }}</b></div><div class="kpi"><small>Sudah Cash</small><b style="font-size:21px">Rp{{ number_format($p->cash_total,0,',','.') }}</b></div><div class="kpi"><small>Sisa Transfer</small><b style="font-size:21px">Rp{{ number_format($p->transfer_due,0,',','.') }}</b></div></div>
+<div class="kpis"><div class="kpi"><small>Total Penerimaan</small><b style="font-size:21px">Rp{{ number_format($p->gross_total,0,',','.') }}</b></div><div class="kpi"><small>Potongan</small><b style="font-size:21px">Rp{{ number_format($p->deduction_total,0,',','.') }}</b></div><div class="kpi"><small>Sudah Cash</small><b style="font-size:21px">Rp{{ number_format($p->cash_total,0,',','.') }}</b></div><div class="kpi"><small>Transfer</small><b style="font-size:21px">Rp{{ number_format($p->transfer_due,0,',','.') }}</b></div></div>
+@include('doctors.transfer_breakdown')
 @if(count($s['warnings']??[]))<div class="alert alert-error">{{ implode(' ',$s['warnings']) }}</div>@endif
 <div class="card" style="margin:18px 0"><div class="card-head"><h3>Rincian Hak Dokter</h3></div><div class="table-wrap"><table><thead><tr><th>Komponen</th><th class="money">Nominal</th></tr></thead><tbody>
 @foreach($s['income'] as $label=>$amount)<tr><td>{{ $label }}</td><td class="money">Rp{{ number_format($amount,0,',','.') }}</td></tr>@endforeach

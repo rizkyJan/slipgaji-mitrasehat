@@ -351,27 +351,69 @@ class DoctorPayslipPdf {
       $pdf->text(55,$y,'PERLU CEK: jumlah rincian cash tidak sama dengan total cash slip.',7.3);$y-=19;
      }
      $ensure(42);$pdf->rgb(.26,.36,.51);
-     if($appendixMode==='cash'){
-      $pdf->text(55,$y,'Sisa untuk transfer: Rp '.$moneyShort($s['transfer_due']??0).' (belum bukti transfer).',8);$y-=19;
-     }
      $pdf->rgb(.45,.5,.58);
      $pdf->text(55,$y,'Tanggal di atas adalah tanggal cash diterima, bukan tanggal praktik.',7.2);$y-=19;
     }
    }
-     // R4.26.2: sisa nominal berdasarkan snapshot slip, BUKAN tanggal praktik yang belum dibayar.
-   if($appendixMode==='transfer' || $appendixMode==='both'){
-    $plannedTransfer=max(0,(int)($s['transfer_due']??$p->transfer_due??0));
-    $netHonor=(int)($s['net_total']??$p->net_total??0);
-    $section('PERKIRAAN SISA TRANSFER',$plannedTransfer);
-    $lineRow('Hak dokter bersih','','',$moneyShort($netHonor));
-    $lineRow('Cash sudah diterima','','',$moneyShort($cashTotal));
-    $lineRow('Sisa rencana transfer','','',$moneyShort($plannedTransfer),true);
-    $ensure(38);$pdf->rgb(.43,.48,.56);
-    $pdf->text(55,$y,'Nominal rencana; bukan bukti transfer atau daftar tanggal praktik.',7.2);$y-=19;
-   }
+      // R4.27: lampiran TRANSFER menampilkan nominal resmi + FEE TIDAK LANGSUNG
+      // per tanggal PRAKTIK dari tabel terpisah. Tidak mengubah snapshot atau pembayaran.
+    if($appendixMode==='transfer' || $appendixMode==='both'){
+     $transferAmount=max(0,(int)($s['transfer_due']??$p->transfer_due??0));
+     $section('TRANSFER',$transferAmount);
+     $ensure(24);$pdf->rgb(.43,.48,.56);
+     $pdf->text(55,$y,'Nominal sesuai slip; rincian pasien di bawah bukan bukti transfer bank.',7.2);$y-=24;
+     // Jangan buat PDF gagal bila migration tabel lampiran belum dijalankan.
+     $indirectEntries=\Illuminate\Support\Facades\Schema::hasTable('doctor_transfer_breakdowns')
+      ? \Illuminate\Support\Facades\DB::table('doctor_transfer_breakdowns')
+       ->where('doctor_payroll_id',$p->id)->orderBy('work_date')->orderBy('session')->get()
+      : collect();
+     $indirectBpjs=0;$indirectUmum=0;
+     $ensure(62);$y-=6;
+     $pdf->rgb(.66,.77,.39);$pdf->rectangle(48,$y-7,500,24,true);
+     $pdf->rgb(.12,.20,.11);$pdf->text(55,$y+1,'FEE TIDAK LANGSUNG',9.2,true);$y-=31;
+     $indirectHeader=function()use($pdf,&$y,$ensure){
+      $ensure(30);
+      $pdf->rgb(.97,.88,.88);$pdf->rectangle(48,$y-6,500,21,true);
+      $pdf->rgb(.17,.20,.22);
+      $pdf->text(55,$y,'HARI',8,true);
+      $pdf->text(311,$y,'TANGGAL',8,true,'right');
+      $pdf->text(420,$y,'PASIEN BPJS',8,true,'right');
+      $pdf->text(541,$y,'PASIEN UMUM',8,true,'right');
+      $y-=26;
+     };
+     $indirectHeader();
+     if($indirectEntries->isEmpty()){
+      $ensure(23);$pdf->rgb(.40,.45,.52);
+      $pdf->text(55,$y,'Belum ada rincian tanggal praktik. Isi dari Detail Honor Dokter.',8);$y-=23;
+     }else{
+      foreach($indirectEntries as $entry){
+       $beforeY=$y;$ensure(23);
+       if($y>$beforeY){
+        $pdf->rgb(.08,.27,.62);$pdf->text(55,$y,'FEE TIDAK LANGSUNG (LANJUTAN)',8.7,true);$y-=24;
+        $indirectHeader();
+       }
+       $rawDate=(string)$entry->work_date;
+       $day=strtoupper(Carbon::parse($rawDate)->locale('id')->translatedFormat('l'));
+       $dateText=Carbon::parse($rawDate)->format('d-m-Y');
+       $bpjs=(int)$entry->bpjs_count;$umum=(int)$entry->umum_count;
+       $indirectBpjs+=$bpjs;$indirectUmum+=$umum;
+       $pdf->rgb(.19,.24,.30);
+       $pdf->text(55,$y,$day.' '.(string)$entry->session,8.1);
+       $pdf->text(311,$y,$dateText,8.1,false,'right');
+       $pdf->text(420,$y,(string)$bpjs,8.1,false,'right');
+       $pdf->text(541,$y,(string)$umum,8.1,false,'right');
+       $pdf->rgb(.81,.84,.89);$pdf->line(48,$y-7,548,$y-7,.35);
+       $y-=23;
+      }
+      $ensure(24);$pdf->rgb(.08,.27,.62);
+      $pdf->text(55,$y,'TOTAL PASIEN',8.5,true);
+      $pdf->text(420,$y,(string)$indirectBpjs,8.5,true,'right');
+      $pdf->text(541,$y,(string)$indirectUmum,8.5,true,'right');$y-=24;
+     }
+    }
    // Tidak mengulang total tagihan, hak dokter, cash, atau transfer di lampiran.
   // Rekap pembayaran final cukup terlihat pada halaman utama; lampiran hanya rincian per kelompok.
-  $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
+  $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran honor dan rincian praktik admin. Dokumen internal.',7.3);
   return $pdf->output();
  }
 }
