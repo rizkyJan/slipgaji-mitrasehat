@@ -5,10 +5,22 @@ use App\Models\DoctorProcedure;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 class DoctorPayrollCalculator {
- // Toleransi kekurangan jam kerja sampai 60 menit: transport tetap penuh.
+ // R4.30: menit toleransi tidak boleh ikut menjadi potongan prorata.
+ // Hari biasa/khusus (pagi/siang) 30 menit; malam 60 menit.
+ // Jenis shift lain tetap memakai toleransi 60 menit R4.29.
  private const FULL_TRANSPORT_GRACE_MINUTES = 60;
- private function transportIsFull(float $worked, float $standard): bool {
-  return (int)round($worked*60) + self::FULL_TRANSPORT_GRACE_MINUTES >= (int)round($standard*60);
+ private const DAY_TRANSPORT_GRACE_MINUTES = 30;
+ private function transportGraceMinutes(string $type): int {
+  return in_array($type, ['biasa', 'khusus'], true) ? self::DAY_TRANSPORT_GRACE_MINUTES : self::FULL_TRANSPORT_GRACE_MINUTES;
+ }
+ private function transportBillableHours(float $worked, float $standard, string $type): float {
+  $standardMinutes = (int)round($standard * 60);
+  $workedMinutes = (int)round($worked * 60);
+  $deductedMinutes = max(0, $standardMinutes - $workedMinutes - $this->transportGraceMinutes($type));
+  return max(0, $standardMinutes - $deductedMinutes) / 60;
+ }
+ private function transportIsFull(float $worked, float $standard, string $type): bool {
+  return (int)round($worked * 60) + $this->transportGraceMinutes($type) >= (int)round($standard * 60);
  }
  private function nonnegative($value):int { return max(0,(int)($value??0)); }
  private function hours(array $row, float $default):float {
@@ -57,8 +69,9 @@ class DoctorPayrollCalculator {
     $worked=$this->hours($entry,(isset($entry['hours_per_visit'])&&$entry['hours_per_visit']!=='')?(float)$entry['hours_per_visit']:$standard);
     if($worked>24)throw ValidationException::withMessages(["recap_transport.$ix.end_time"=>'Durasi kerja maksimal 24 jam.']);
     $hourly=$this->nonnegative($rules['hourly_override']??0);
-    $isFull=$this->transportIsFull($worked,$standard);
-    $perVisit=$isFull?$fullRate:(int)round(min($fullRate,($hourly>0?$hourly:$fullRate/$standard)*$worked));
+    $isFull=$this->transportIsFull($worked,$standard,$kind);
+    $billableHours=$this->transportBillableHours($worked,$standard,$kind);
+    $perVisit=$isFull?$fullRate:(int)round(min($fullRate,($hourly>0?$hourly:$fullRate/$standard)*$billableHours));
     $subtotal=$perVisit*$qty;
     $totTransport+=$subtotal;
     if($kind==='poli2')$poliShifts+=$qty;
@@ -93,9 +106,10 @@ class DoctorPayrollCalculator {
    if($worked>24)throw ValidationException::withMessages(["shifts.$ix.end_time"=>'Jam praktik tidak boleh lebih dari 24 jam.']);
    $hourly=$this->nonnegative($rules['hourly_override']??0);
    $hasManual=isset($r['transport_override']) && $r['transport_override']!=='' && $r['transport_override']!==null;
-   $modeTransport=$hasManual?'manual':($this->transportIsFull($worked,$standard)?'full':($hourly>0?'hourly':'prorata'));
+   $modeTransport=$hasManual?'manual':($this->transportIsFull($worked,$standard,$type)?'full':($hourly>0?'hourly':'prorata'));
+   $billableHours=$hasManual?$worked:$this->transportBillableHours($worked,$standard,$type);
    $transport=$hasManual?$this->nonnegative($r['transport_override']):
-    ($modeTransport==='full'?$rate:(int)round(min($rate,($hourly>0?$hourly:$rate/$standard)*$worked)));
+    ($modeTransport==='full'?$rate:(int)round(min($rate,($hourly>0?$hourly:$rate/$standard)*$billableHours)));
    $bpjs=$this->nonnegative($r['bpjs_count']??0); $umum=$this->nonnegative($r['general_count']??0);
    // R4.4: hanya Poli 2 yang memiliki kuota pasien termasuk transport.
    // Untuk shift lain, semua pasien BPJS/umum dibayar dari pasien pertama.
