@@ -22,6 +22,7 @@
    <p class="dr-help">Belum ada rincian tanggal praktik tersimpan. PDF tidak akan membuat tanggal atau jumlah pasien sendiri untuk mode rekap bulanan.</p>
   @endif
   @can('manage-settings')
+    <div style="margin:10px 0 14px"><a class="btn btn-outline" href="{{ route('doctors.transfer_excel.preview', $p) }}">Ambil otomatis dari Arsip Analisis Excel</a> <small class="dr-help">Pratinjau dulu; tidak mengubah honor resmi.</small></div>
    <details style="margin-top:14px"><summary style="cursor:pointer;font-weight:600">Tambah / edit rincian Fee Tidak Langsung</summary>
     <form method="post" action="{{ route('doctors.transfer_breakdown.save', $p) }}" style="margin-top:12px">
      @csrf
