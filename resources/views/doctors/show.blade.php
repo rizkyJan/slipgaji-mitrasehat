@@ -5,7 +5,15 @@
 <div class="page-head"><div><p class="eyebrow">DETAIL PENGGAJIAN DOKTER</p><h1 class="page-title">{{ $doctor?->name }}</h1><p class="page-sub">{{ $p->assignment->branch }} · {{ $p->period }} · {{ $p->slip_number??'DRAFT (belum ada nomor sah)' }}</p></div><a class="btn btn-outline" href="{{ route('doctors.index') }}">Kembali</a></div>
 <div class="card" style="margin-bottom:18px"><div class="card-pad" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
 <span class="tag {{ $p->status==='approved'?'tag-green':'tag-amber' }}">{{ $p->status==='approved'?'Disetujui & Dikunci':'Draft' }}</span>
-<a class="btn btn-outline" href="{{ route('doctors.pdf',$p) }}" target="_blank">Lihat PDF</a>
+<form method="get" action="{{ route('doctors.pdf',$p) }}" target="_blank" style="display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0">
+ <label for="r4262-lampiran" style="font-size:13px;font-weight:600">Lampiran PDF</label>
+ <select id="r4262-lampiran" name="lampiran" aria-label="Pilihan isi lampiran PDF" style="max-width:260px;border:1px solid #d4e1f5;border-radius:9px;padding:9px;background:white;color:#15345c">
+  <option value="both" selected>Cash + Perkiraan Transfer</option>
+  <option value="cash">Riwayat Cash saja</option>
+  <option value="transfer">Perkiraan Sisa Transfer saja</option>
+ </select>
+ <button class="btn btn-outline" type="submit">Lihat PDF</button>
+</form>
 @if($p->status==='draft')<a class="btn btn-primary" href="{{ route('doctors.edit',$p) }}">Edit Draft</a>
 @can('approve-payroll')<form method="post" action="{{ route('doctors.approve',$p) }}" onsubmit="return confirm('Setujui dan kunci honor dokter ini?')">@csrf<button class="btn btn-primary">Setujui & Terbitkan</button></form>@endcan
 <form method="post" action="{{ route('doctors.delete',$p) }}" onsubmit="return confirm('Hapus draft dokter ini?')">@csrf @method('DELETE')<button class="btn btn-outline">Hapus Draft</button></form>

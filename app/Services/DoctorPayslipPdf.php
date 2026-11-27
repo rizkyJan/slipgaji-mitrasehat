@@ -8,6 +8,12 @@ class DoctorPayslipPdf {
   $v=app(DoctorSlipVerification::class);
   if($p->status==='approved'){$p=$v->issue($p);$v->assertIntact($p);}
   $s=$p->calculation_snapshot;$d=$s['doctor'];$pdf=new PdfCanvas();
+   // R4.26.2: mode lampiran hanya dipilih melalui tombol PDF; email tetap format R4.25.
+   $appendixMode='cash';
+   if(function_exists('app') && app()->bound('request') && request()->routeIs('doctors.pdf')){
+    $candidate=(string)request()->query('lampiran','cash');
+    if(in_array($candidate,['cash','transfer','both'],true))$appendixMode=$candidate;
+   }
   // Kebijakan tampilan disimpan di rules dalam snapshot, bukan diambil dari profil terbaru.
   // Slip lama tanpa flags memakai default aman: komponen opsional nol disembunyikan.
   $rules=$s['rules']??[];
@@ -321,7 +327,7 @@ class DoctorPayslipPdf {
    // R4.25: riwayat cash dibaca dari snapshot slip, bukan dari tabel rekonsiliasi
    // fee harian. Tanggal yang dicetak adalah tanggal uang diterima, bukan tanggal
    // praktik. Sisa transfer tetap saldo rencana, bukan bukti transfer dilakukan.
-   if($cashTotal>0){
+   if($cashTotal>0 && $appendixMode!=='transfer'){
     $cashRows=(array)($s['cash']??($p->input_snapshot['cash']??[]));
     $cashEntries=[];$cashRowsSum=0;
     foreach($cashRows as $entry){
@@ -345,12 +351,25 @@ class DoctorPayslipPdf {
       $pdf->text(55,$y,'PERLU CEK: jumlah rincian cash tidak sama dengan total cash slip.',7.3);$y-=19;
      }
      $ensure(42);$pdf->rgb(.26,.36,.51);
-     $pdf->text(55,$y,'Sisa untuk transfer: Rp '.$moneyShort($s['transfer_due']??0).' (belum bukti transfer).',8);$y-=19;
+     if($appendixMode==='cash'){
+      $pdf->text(55,$y,'Sisa untuk transfer: Rp '.$moneyShort($s['transfer_due']??0).' (belum bukti transfer).',8);$y-=19;
+     }
      $pdf->rgb(.45,.5,.58);
      $pdf->text(55,$y,'Tanggal di atas adalah tanggal cash diterima, bukan tanggal praktik.',7.2);$y-=19;
     }
    }
-  // Tidak mengulang total tagihan, hak dokter, cash, atau transfer di lampiran.
+     // R4.26.2: sisa nominal berdasarkan snapshot slip, BUKAN tanggal praktik yang belum dibayar.
+   if($appendixMode==='transfer' || $appendixMode==='both'){
+    $plannedTransfer=max(0,(int)($s['transfer_due']??$p->transfer_due??0));
+    $netHonor=(int)($s['net_total']??$p->net_total??0);
+    $section('PERKIRAAN SISA TRANSFER',$plannedTransfer);
+    $lineRow('Hak dokter bersih','','',$moneyShort($netHonor));
+    $lineRow('Cash sudah diterima','','',$moneyShort($cashTotal));
+    $lineRow('Sisa rencana transfer','','',$moneyShort($plannedTransfer),true);
+    $ensure(38);$pdf->rgb(.43,.48,.56);
+    $pdf->text(55,$y,'Nominal rencana; bukan bukti transfer atau daftar tanggal praktik.',7.2);$y-=19;
+   }
+   // Tidak mengulang total tagihan, hak dokter, cash, atau transfer di lampiran.
   // Rekap pembayaran final cukup terlihat pada halaman utama; lampiran hanya rincian per kelompok.
   $pdf->rgb(.47,.50,.54);$pdf->text(48,38,'Lampiran dari snapshot honor. Dokumen internal.',7.3);
   return $pdf->output();
